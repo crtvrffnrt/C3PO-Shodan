@@ -1,0 +1,13 @@
+.env
+attack_surface_latest.html
+scripts/__pycache__/
+runtime/cache/*
+!runtime/cache/.gitkeep
+runtime/logs/*
+!runtime/logs/.gitkeep
+runtime/output/*
+!runtime/output/.gitkeep
+runtime/reports/*
+!runtime/reports/.gitkeep
+runtime/screenshots/*
+!runtime/screenshots/.gitkeep
