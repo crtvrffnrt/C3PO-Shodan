@@ -21,7 +21,7 @@ attack_surface_latest.html
 !GEMINI.md
 
 # Logs and runtime data
-runtime/
+runtime/*
 !runtime/cache/.gitkeep
 !runtime/logs/.gitkeep
 !runtime/output/.gitkeep
