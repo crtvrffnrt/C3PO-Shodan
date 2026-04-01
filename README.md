@@ -1,7 +1,8 @@
 # C3PO-shodan
 
 C3PO-shodan is a Bash-orchestrated Shodan attack-surface workflow that mirrors the execution style of `C3PO-Osinter`, but targets domain-centric infrastructure discovery instead of trading intelligence.
-
+Needs shodan token in bashrc like export SHODANAPI="lölasjgklj2jndslklösd"
+needs local installed gemini cli logged in to work
 ## Execution
 
 Run it exactly from the project root:
