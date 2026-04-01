@@ -9,5 +9,4 @@ Operational rules:
 - Prefer deterministic collection and rendering logic over conversational output.
 - Treat screenshots as optional augmentation, never as a hard dependency.
 - Keep all artifacts versioned under `runtime/`.
-- Reuse the existing OpenClaw service-principal environment variables for Azure upload.
 - Never overwrite the main static-web `index.html`; publish distinct report filenames.

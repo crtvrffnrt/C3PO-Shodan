@@ -2,7 +2,7 @@
 
 1. Operator runs `./run.sh <domain>` from the project root.
 2. `scripts/fetch-context.sh` optionally refreshes `GEMINI.md`.
-3. `scripts/validate.sh` checks config, required files, Python, Shodan key presence, and Azure readiness.
+3. `scripts/validate.sh` checks config, required files, Python, and Shodan key presence.
 4. `scripts/collect-attack-surface.py` gathers:
    - Shodan DNS records and subdomains
    - optional certificate-transparency subdomains
@@ -14,4 +14,4 @@
 6. `scripts/render-report.py` creates:
    - versioned markdown report
    - versioned HTML dashboard
-7. `scripts/deploy-report.sh` uploads the HTML dashboard to Azure static-web storage under a distinct blob name.
+7. The rendered HTML dashboard is written locally to `output/`.

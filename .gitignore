@@ -1,13 +1,42 @@
+# Secrets
 .env
+*.key
+*.pem
+*.token
+
+# Output and results
+output/
 attack_surface_latest.html
-scripts/__pycache__/
-runtime/cache/*
+*.json
+*.jsonl
+*.html
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.md
+!README.md
+!docs/*.md
+!prompts/README.md
+!GEMINI.md
+
+# Logs and runtime data
+runtime/
 !runtime/cache/.gitkeep
-runtime/logs/*
 !runtime/logs/.gitkeep
-runtime/output/*
 !runtime/output/.gitkeep
-runtime/reports/*
 !runtime/reports/.gitkeep
-runtime/screenshots/*
 !runtime/screenshots/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+env/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

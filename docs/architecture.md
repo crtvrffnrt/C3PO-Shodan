@@ -7,7 +7,7 @@ C3PO-shodan follows the same root-centric orchestration model as `C3PO-Osinter`,
 ## Layers
 
 1. `run.sh` and `bin/run.sh`
-   Coordinate validation, collection, screenshots, rendering, and Azure upload.
+   Coordinate validation, collection, screenshots, and rendering.
 
 2. `scripts/common.sh`
    Centralizes path resolution, dotenv loading, config parsing, and helper functions.
@@ -21,14 +21,11 @@ C3PO-shodan follows the same root-centric orchestration model as `C3PO-Osinter`,
 5. `scripts/render-report.py`
    Builds both markdown and a self-contained HTML dashboard from the collected JSON plus screenshot artifacts.
 
-6. `scripts/deploy-report.sh`
-   Uploads the named HTML artifact into the existing Azure static website container without replacing `index.html`.
-
 ## Runtime Outputs
 
-- `runtime/output/*.json`: Raw collection and screenshot manifests
+- `output/*.json`: Raw collection and screenshot manifests
+- `output/*.html`: Self-contained HTML dashboards
 - `runtime/reports/*.md`: Markdown attack-surface reports
-- `runtime/output/*.html`: Self-contained HTML dashboards
 - `runtime/screenshots/*.png`: Optional host screenshots
 
 ## Design Principles
@@ -37,4 +34,4 @@ C3PO-shodan follows the same root-centric orchestration model as `C3PO-Osinter`,
 - Single-command execution
 - No hard dependency on Gemini
 - Best-effort screenshots
-- Same Azure auth model, different blob names
+- Local-only artifact generation

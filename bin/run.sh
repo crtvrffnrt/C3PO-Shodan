@@ -95,10 +95,6 @@ MAX_SCREENSHOTS="$(parse_yaml max_screenshots)"
 SCREENSHOT_TIMEOUT_SECONDS="$(parse_yaml screenshot_timeout_seconds)"
 SCREENSHOT_WIDTH="$(parse_yaml screenshot_window_width)"
 SCREENSHOT_HEIGHT="$(parse_yaml screenshot_window_height)"
-BLOB_PREFIX="$(parse_yaml blob_name_prefix)"
-
-BLOB_NAME="${BLOB_PREFIX}${TARGET_SLUG}-${REPORT_DATE}.html"
-
 echo "[*] Phase 1: Collecting Shodan attack-surface intelligence for $TARGET_DOMAIN ..."
 collector_cmd=(
     python3 "$SCRIPTS_DIR/collect-attack-surface.py"
@@ -183,14 +179,6 @@ if [ ! -s "$HTML_REPORT" ]; then
 fi
 
 cp "$HTML_REPORT" "$LATEST_HTML"
-
-# Override BLOB_NAME as requested: easm.html (will overwrite)
-BLOB_NAME="easm.html"
-
-echo "[*] Phase 5: Uploading named report artifact ($BLOB_NAME) ..."
-if ! ./scripts/deploy-report.sh "$HTML_REPORT" "$BLOB_NAME"; then
-    echo "[!] Azure upload failed. Local artifacts were still created." >&2
-fi
 
 echo "[*] Report JSON: $RAW_JSON"
 echo "[*] Report Markdown: $MARKDOWN_REPORT"

@@ -21,7 +21,6 @@ If no domain is provided, the workflow prompts for one interactively.
 - Highlights takeover-oriented CNAME/provider patterns inspired by the `BountyHelperScripts` helpers.
 - Attempts screenshots for live HTTP/S hosts when a headless browser tool is present.
 - Renders a markdown report and a self-contained HTML dashboard.
-- Uploads the HTML report to the same Azure static-web storage model used by `C3PO-Osinter`, but under a distinct blob name.
 
 ## Structure
 
@@ -30,13 +29,13 @@ If no domain is provided, the workflow prompts for one interactively.
 - `scripts/`: Shared shell helpers plus Python collection/rendering modules.
 - `config/`: Workflow configuration and provider fragment lists.
 - `docs/`: Architecture, flow, style guide, and HTML reference.
-- `runtime/`: Generated JSON, markdown, screenshots, and HTML outputs.
+- `output/`: Generated JSON and HTML outputs.
+- `runtime/`: Generated markdown, screenshots, and cache artifacts.
 - `GEMINI.md`: Project context for future AI-assisted extensions.
 
 ## Required Inputs
 
 - `SHODANAPI` in the environment or `~/.shodan/api_key`
-- Azure auth only if you want upload enabled
 
 ## Notes
 

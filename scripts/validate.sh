@@ -14,7 +14,6 @@ FILES_TO_CHECK=(
     "$SCRIPTS_DIR/collect-attack-surface.py"
     "$SCRIPTS_DIR/capture-screenshots.py"
     "$SCRIPTS_DIR/render-report.py"
-    "$SCRIPTS_DIR/deploy-report.sh"
 )
 
 for file in "${FILES_TO_CHECK[@]}"; do
@@ -30,14 +29,6 @@ require_command curl
 if ! resolve_shodan_key >/dev/null 2>&1; then
     echo "[!] Missing Shodan API key. Set SHODANAPI or ~/.shodan/api_key." >&2
     exit 1
-fi
-
-AZURE_UPLOAD_ENABLED="$(parse_yaml "azure_upload_enabled")"
-if config_is_true "$AZURE_UPLOAD_ENABLED"; then
-    if ! command -v az >/dev/null 2>&1; then
-        echo "[!] Azure upload is enabled but 'az' is not installed." >&2
-        exit 1
-    fi
 fi
 
 SCREENSHOT_ENABLED="$(parse_yaml "screenshot_enabled")"

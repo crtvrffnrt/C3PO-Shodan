@@ -1,8 +1,3 @@
-storage_account_name: "stc3ooclawrpfyx"
-storage_container_name: "$web"
-static_web_host: "stc3ooclawrpfyx.z6.web.core.windows.net"
-blob_name_prefix: "c3po-shodan-attack-surface-"
-azure_upload_enabled: "true"
 domain_ct_enabled: "true"
 domain_ct_timeout_seconds: "20"
 shodan_dns_page_limit: "4"
