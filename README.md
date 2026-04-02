@@ -1,5 +1,4 @@
 <div align="center">
-  <img src="logo.jpg" alt="C3PO-shodan Logo" width="400">
 
   # C3PO-shodan
 
@@ -11,6 +10,8 @@
 
   **A Bash-orchestrated Shodan attack-surface workflow for deterministic infrastructure discovery.**
 </div>
+---
+  <img src="logo.jpg" alt="C3PO-shodan Logo" width="400">
 
 ---
 
