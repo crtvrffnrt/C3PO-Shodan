@@ -12,6 +12,7 @@ import urllib.request
 import urllib.parse
 from collections import defaultdict
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 def log_err(msg: str, debug: bool) -> None:
@@ -147,10 +148,11 @@ def redact_url(url: str) -> str:
 
 def shodan_api_info(api_key: str, debug: bool) -> tuple[str, int]:
     url = f"https://api.shodan.io/api-info?key={api_key}"
-    return shodan_get(url, debug)
+    body, status, _ = shodan_get(url, debug)
+    return body, status
 
 
-def shodan_get(url: str, debug: bool) -> tuple[str, int]:
+def shodan_get(url: str, debug: bool, passthrough: any = None) -> tuple[str, int, any]:
     attempt = 0
     max_attempts = 5
     delay = 1
@@ -166,11 +168,11 @@ def shodan_get(url: str, debug: bool) -> tuple[str, int]:
             body = exc.read().decode("utf-8", errors="replace")
         except Exception:
             log_dbg(f"Request failed: {redact_url(url)}", debug)
-            return ("", 0)
+            return ("", 0, passthrough)
 
         if status == 200:
             log_dbg(f"Shodan response 200 for: {redact_url(url)}", debug)
-            return (body, status)
+            return (body, status, passthrough)
 
         if status == 429 or "rate limit" in body.lower():
             log_dbg(f"Rate limited (status {status}); backing off {delay}s", debug)
@@ -179,10 +181,10 @@ def shodan_get(url: str, debug: bool) -> tuple[str, int]:
             continue
 
         log_dbg(f"Shodan API error ({status}): {redact_url(url)}", debug)
-        return ("", status)
+        return ("", status, passthrough)
 
     log_dbg(f"Shodan API rate limit exceeded: {redact_url(url)}", debug)
-    return ("", 429)
+    return ("", 429, passthrough)
 
 
 def load_shodan_key_file() -> str:
@@ -282,43 +284,46 @@ def run_domain_shodan_checks(
     hostname_sources = defaultdict(set)
     hostname_sources[target_domain].add("target")
 
-    for mode_label, history_flag in [("current", "false"), ("history", "true")]:
-        log_dbg(f"Fetching {mode_label} DNS records...", debug)
-        url = f"https://api.shodan.io/dns/domain/{target_domain}?key={api_key}&history={history_flag}"
-        body, status = shodan_get(url, debug)
-        if status != 200 or not body:
-            log_dbg(f"Failed to fetch {mode_label} DNS (status {status})", debug)
-            continue
-        try:
-            data = json.loads(body)
-        except json.JSONDecodeError:
-            log_dbg(f"Invalid JSON for {mode_label} DNS", debug)
-            continue
+    dns_tasks = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        for mode_label, history_flag in [("current", "false"), ("history", "true")]:
+            log_dbg(f"Fetching {mode_label} DNS records...", debug)
+            url = f"https://api.shodan.io/dns/domain/{target_domain}?key={api_key}&history={history_flag}"
+            dns_tasks.append(executor.submit(shodan_get, url, debug, mode_label))
 
-        records = data.get("data", [])
-        log_dbg(f"Found {len(records)} {mode_label} DNS records", debug)
+        for future in as_completed(dns_tasks):
+            body, status, mode_label = future.result()
+            if status != 200 or not body:
+                log_dbg(f"Failed to fetch {mode_label} DNS (status {status})", debug)
+                continue
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                log_dbg(f"Invalid JSON for {mode_label} DNS", debug)
+                continue
 
-        for entry in records:
-            sub = entry.get("subdomain") or ""
-            fqdn = f"{sub}.{target_domain}" if sub else target_domain
-            fqdn = fqdn.lower().rstrip(".")
-            rec_type = entry.get("type", "UNKNOWN")
-            value = str(entry.get("value") or "").rstrip(".")
-            
-            # Use a tuple as a key to avoid duplicates in dns_records
-            dns_records.append({
-                "hostname": fqdn,
-                "type": rec_type,
-                "value": value,
-                "last_seen": str(entry.get("last_seen") or ""),
-                "source": f"shodan_dns_{mode_label}"
-            })
-            hostname_sources[fqdn].add(f"shodan_dns_{mode_label}")
-            
-            # If value is a hostname in scope, track it
-            val_norm = normalize_domain(value)
-            if val_norm.endswith(target_domain):
-                hostname_sources[val_norm].add(f"shodan_dns_{mode_label}")
+            records = data.get("data", [])
+            log_dbg(f"Found {len(records)} {mode_label} DNS records", debug)
+
+            for entry in records:
+                sub = entry.get("subdomain") or ""
+                fqdn = f"{sub}.{target_domain}" if sub else target_domain
+                fqdn = fqdn.lower().rstrip(".")
+                rec_type = entry.get("type", "UNKNOWN")
+                value = str(entry.get("value") or "").rstrip(".")
+                
+                dns_records.append({
+                    "hostname": fqdn,
+                    "type": rec_type,
+                    "value": value,
+                    "last_seen": str(entry.get("last_seen") or ""),
+                    "source": f"shodan_dns_{mode_label}"
+                })
+                hostname_sources[fqdn].add(f"shodan_dns_{mode_label}")
+                
+                val_norm = normalize_domain(value)
+                if val_norm.endswith(target_domain):
+                    hostname_sources[val_norm].add(f"shodan_dns_{mode_label}")
 
     # 3. Host Enrichment
     unique_ips = set()
@@ -328,38 +333,42 @@ def run_domain_shodan_checks(
     
     log_dbg(f"Found {len(unique_ips)} unique IPs for enrichment", debug)
     enrichment_targets = sorted(list(unique_ips))[:host_enrichment_limit]
-    log_dbg(f"Enriching top {len(enrichment_targets)} IPs", debug)
+    log_dbg(f"Enriching top {len(enrichment_targets)} IPs (Parallel)", debug)
     ip_assets = []
     ip_summaries = {}
 
-    for ip in enrichment_targets:
-        url = f"https://api.shodan.io/shodan/host/{ip}?key={api_key}&minify=false"
-        body, status = shodan_get(url, debug)
-        if status == 200 and body:
-            data = json.loads(body)
-            ports = sorted(data.get("ports", []))
-            vulns = sorted(data.get("vulns", [])) if data.get("vulns") else []
-            log_dbg(f"Enriched {ip}: {len(ports)} ports, {len(vulns)} vulns", debug)
-            summary = {
-                "ip": ip,
-                "ports": ports,
-                "products": sorted({entry.get("product") for entry in data.get("data", []) if entry.get("product")}),
-                "vulns": vulns,
-                "org": data.get("org", ""),
-                "isp": data.get("isp", ""),
-                "asn": data.get("asn", ""),
-                "country": data.get("country_name", ""),
-                "os": data.get("os", ""),
-                "last_update": data.get("last_update", ""),
-            }
-            ip_assets.append(summary)
-            ip_summaries[ip] = summary
-            
-            # Add discovered hostnames
-            for h in data.get("hostnames", []):
-                h_norm = normalize_domain(h)
-                if h_norm.endswith(target_domain):
-                    hostname_sources[h_norm].add("shodan_host")
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        host_tasks = []
+        for ip in enrichment_targets:
+            url = f"https://api.shodan.io/shodan/host/{ip}?key={api_key}&minify=false"
+            host_tasks.append(executor.submit(shodan_get, url, debug, ip))
+
+        for future in as_completed(host_tasks):
+            body, status, ip = future.result()
+            if status == 200 and body:
+                data = json.loads(body)
+                ports = sorted(data.get("ports", []))
+                vulns = sorted(data.get("vulns", [])) if data.get("vulns") else []
+                log_dbg(f"Enriched {ip}: {len(ports)} ports, {len(vulns)} vulns", debug)
+                summary = {
+                    "ip": ip,
+                    "ports": ports,
+                    "products": sorted({entry.get("product") for entry in data.get("data", []) if entry.get("product")}),
+                    "vulns": vulns,
+                    "org": data.get("org", ""),
+                    "isp": data.get("isp", ""),
+                    "asn": data.get("asn", ""),
+                    "country": data.get("country_name", ""),
+                    "os": data.get("os", ""),
+                    "last_update": data.get("last_update", ""),
+                }
+                ip_assets.append(summary)
+                ip_summaries[ip] = summary
+                
+                for h in data.get("hostnames", []):
+                    h_norm = normalize_domain(h)
+                    if h_norm.endswith(target_domain):
+                        hostname_sources[h_norm].add("shodan_host")
 
     # 4. Suffix Analysis (Takeover)
     fragments = []
@@ -511,7 +520,7 @@ def main(argv) -> int:
             queried.add(core)
             
             url = f"https://api.shodan.io/dns/domain/{core}?key={api_key}&type=CNAME&page=1&history=false"
-            body, status = shodan_get(url, args.debug)
+            body, status, _ = shodan_get(url, args.debug)
             if not body or status != 200:
                 continue
             try:

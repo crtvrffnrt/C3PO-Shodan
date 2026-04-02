@@ -1,7 +1,7 @@
 domain_ct_enabled: "true"
 domain_ct_timeout_seconds: "20"
 shodan_dns_page_limit: "4"
-shodan_host_enrichment_limit: "30"
+shodan_host_enrichment_limit: "20"
 web_probe_timeout_seconds: "10"
 max_hosts_for_http_probe: "40"
 max_screenshots: "16"
