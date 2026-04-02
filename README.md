@@ -8,14 +8,12 @@
   [![Gemini CLI](https://img.shields.io/badge/CLI-Gemini-purple.svg)](https://github.com/google/gemini-cli)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-  **A Bash-orchestrated Shodan attack-surface workflow for deterministic infrastructure discovery.**
+  **A Bash-orchestrated Shodan attack-surface workflow for deterministic infrastructure discovery. This is a really awesome Tool**
 </div>
 ---
   <div align="center">
   <img src="logo.jpg" alt="C3PO-shodan Logo" width="400">
 </div>
----
-
 ## 🤖 Overview
 
 **C3PO-shodan** is a powerful, deterministic pipeline designed to map a domain's external attack surface using Shodan DNS data and host telemetry. It mirrors the execution style of `C3PO-Osinter` but focuses strictly on infrastructure discovery, IP resolution, and risk scoring.
