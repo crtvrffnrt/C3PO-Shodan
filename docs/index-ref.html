@@ -1,69 +1,858 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>C3PO-shodan Reference</title>
-  <style>
-    :root {
-      --bg: #06131a;
-      --panel: rgba(9, 23, 31, 0.88);
-      --panel-strong: rgba(8, 31, 44, 0.94);
-      --line: rgba(111, 227, 255, 0.18);
-      --text: #e7f7ff;
-      --muted: #89a9b7;
-      --accent: #52e0ff;
-      --warn: #ffb454;
-      --danger: #ff6b81;
-      --ok: #5bffb3;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      font-family: system-ui, sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(82, 224, 255, 0.16), transparent 28%),
-        radial-gradient(circle at bottom right, rgba(255, 180, 84, 0.10), transparent 30%),
-        linear-gradient(180deg, #051018, #08151e 45%, #03070a);
-    }
-    .shell {
-      width: min(1280px, 94vw);
-      margin: 0 auto;
-      padding: 32px 0 64px;
-    }
-    .hero, .panel {
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      background: var(--panel);
-      backdrop-filter: blur(12px);
-      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
-    }
-    .hero { padding: 28px; }
-    .hero h1 { margin: 0 0 10px; }
-    .hero p { margin: 0; color: var(--muted); }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      margin-top: 18px;
-    }
-    .panel { padding: 20px; }
-  </style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>[CVE-ID] | [Product Name] [Vulnerability Type] Disclosure</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --viewer-bg: #eef1f4;
+            --viewer-bg-soft: #f6f7f9;
+            --paper: #ffffff;
+            --paper-strong: #fbfbfc;
+            --text: #111111;
+            --text-soft: #2a2a2a;
+            --text-muted: #666666;
+            --line: #d7dbe0;
+            --line-strong: #c4c9cf;
+            --shadow: 0 24px 60px rgba(0, 0, 0, 0.08);
+            --radius-lg: 28px;
+            --radius-md: 18px;
+            --radius-sm: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background:
+                linear-gradient(180deg, #f7f8fa 0%, #eef1f4 100%);
+            color: var(--text);
+            font: 400 16px/1.68 "Manrope", sans-serif;
+        }
+
+        a {
+            color: inherit;
+        }
+
+        .viewer-shell {
+            width: min(1460px, calc(100% - 28px));
+            margin: 0 auto;
+            padding: 28px 0 52px;
+            display: grid;
+            grid-template-columns: 320px minmax(0, 1fr);
+            gap: 28px;
+        }
+
+        .sidebar {
+            position: sticky;
+            top: 20px;
+            align-self: start;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 18px 36px rgba(0, 0, 0, 0.05);
+            padding: 22px 22px 20px;
+        }
+
+        .eyebrow,
+        .meta-label,
+        .terminal-title,
+        .badge,
+        .pill,
+        .toc a,
+        .footer-meta {
+            font-family: "IBM Plex Mono", monospace;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .eyebrow {
+            margin: 0 0 12px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .sidebar h1,
+        .paper h1,
+        .paper h2,
+        .paper h3 {
+            font-family: "Space Grotesk", sans-serif;
+            line-height: 1.08;
+            letter-spacing: -0.03em;
+            color: #060606;
+        }
+
+        .sidebar h1 {
+            margin: 0 0 14px;
+            font-size: 1.58rem;
+        }
+
+        .sidebar p {
+            margin: 0;
+            color: var(--text-soft);
+        }
+
+        .sidebar .muted {
+            color: var(--text-muted);
+        }
+
+        .quick-facts {
+            margin-top: 16px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .fact {
+            border: 1px solid var(--line);
+            border-radius: var(--radius-sm);
+            padding: 12px 13px;
+            background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+        }
+
+        .meta-label {
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .meta-value {
+            font-size: 0.96rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .toc h2,
+        .info-card h2,
+        .researcher-card h2 {
+            margin: 0 0 14px;
+            font-size: 1rem;
+        }
+
+        .toc nav {
+            display: grid;
+            gap: 10px;
+        }
+
+        .toc a {
+            display: block;
+            font-size: 0.78rem;
+            text-decoration: none;
+            color: var(--text-soft);
+            padding: 9px 11px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+        }
+
+        .toc a:hover {
+            background: #fafbfc;
+            border-color: var(--line);
+            transform: translateX(2px);
+        }
+
+        .info-card {
+            font-size: 0.9rem;
+            padding: 18px 18px 16px;
+        }
+
+        .info-card h1 {
+            font-size: 1.3rem;
+        }
+
+        .paper-wrap {
+            min-width: 0;
+        }
+
+        .paper {
+            background: var(--paper);
+            border: 1px solid var(--line);
+            border-radius: 34px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .paper-inner {
+            padding: 44px 52px 54px;
+        }
+
+        .cover {
+            padding-bottom: 26px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .cover-kicker {
+            margin: 0 0 14px;
+            font: 600 0.76rem/1 "IBM Plex Mono", monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+        }
+
+        .paper h1 {
+            margin: 0 0 16px;
+            font-size: clamp(2rem, 4vw, 3.25rem);
+        }
+
+        .lede {
+            margin: 0;
+            max-width: 860px;
+            font-size: 1.06rem;
+            color: var(--text-soft);
+        }
+
+        .cover-grid {
+            margin-top: 24px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .summary-card {
+            padding: 16px 16px 15px;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+        }
+
+        .summary-card .meta-label {
+            margin-bottom: 8px;
+        }
+
+        .summary-card strong {
+            display: block;
+            font-size: 1rem;
+            line-height: 1.35;
+        }
+
+        .paper-section {
+            padding-top: 30px;
+            border-top: 1px solid var(--line);
+            margin-top: 30px;
+        }
+
+        .paper-section:first-of-type {
+            border-top: 0;
+            margin-top: 0;
+            padding-top: 0;
+        }
+
+        .paper h2 {
+            margin: 0 0 16px;
+            font-size: 1.6rem;
+        }
+
+        .paper h3 {
+            margin: 24px 0 12px;
+            font-size: 1.08rem;
+        }
+
+        .paper p,
+        .paper li {
+            color: var(--text-soft);
+        }
+
+        .paper p {
+            margin: 0 0 14px;
+        }
+
+        .paper ul,
+        .paper ol {
+            margin: 0 0 16px;
+            padding-left: 22px;
+        }
+
+        .paper li + li {
+            margin-top: 8px;
+        }
+
+        .grid-two {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .grid-three {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .callout {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+            padding: 18px 18px 16px;
+        }
+
+        .callout h3 {
+            margin-top: 0;
+        }
+
+        .badge,
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid #111111;
+            border-radius: 999px;
+            padding: 4px 10px;
+            font-size: 0.7rem;
+            line-height: 1;
+            background: #f7f7f7;
+            color: #111111;
+        }
+
+        .pill-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .key-table,
+        .evidence-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            overflow: hidden;
+        }
+
+        .key-table th,
+        .key-table td,
+        .evidence-table th,
+        .evidence-table td {
+            text-align: left;
+            vertical-align: top;
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .key-table tr:last-child td,
+        .evidence-table tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .key-table th,
+        .evidence-table th {
+            width: 220px;
+            background: #f7f8fa;
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .note-strip {
+            border-left: 3px solid #111111;
+            padding: 10px 0 10px 14px;
+            margin: 18px 0 0;
+            color: var(--text-soft);
+        }
+
+        .terminal-card {
+            margin-top: 18px;
+            overflow: hidden;
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            background: #ffffff;
+        }
+
+        .terminal-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+            background: #f6f7f9;
+        }
+
+        .terminal-title {
+            font-size: 0.75rem;
+            color: var(--text-soft);
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            appearance: none;
+            border-radius: 999px;
+            padding: 8px 12px;
+            border: 1px solid rgba(0, 0, 0, 0.14);
+            background: #ffffff;
+            color: #111111;
+            font: 700 0.72rem/1 "IBM Plex Mono", monospace;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            background: #f7f7f7;
+            border-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .code-block {
+            margin: 0;
+            padding: 18px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: #fbfbfc;
+            color: #1a1a1a;
+            font: 500 0.92rem/1.72 "IBM Plex Mono", monospace;
+        }
+
+        .mini-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .chapter-break {
+            height: 1px;
+            background: linear-gradient(90deg, transparent 0%, var(--line) 12%, var(--line) 88%, transparent 100%);
+            margin: 34px 0 0;
+        }
+
+        .footer {
+            margin-top: 36px;
+            padding-top: 20px;
+            border-top: 1px solid var(--line);
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .footer-meta {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .small {
+            font-size: 0.95rem;
+        }
+
+        @media (max-width: 1180px) {
+            .viewer-shell {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                position: static;
+            }
+
+            .cover-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 820px) {
+            .paper-inner {
+                padding: 28px 22px 34px;
+            }
+
+            .cover-grid,
+            .grid-two,
+            .grid-three {
+                grid-template-columns: 1fr;
+            }
+
+            .terminal-head {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+
+        @media print {
+            body {
+                background: #ffffff;
+            }
+
+            .viewer-shell {
+                width: 100%;
+                display: block;
+                padding: 0;
+            }
+
+            .sidebar {
+                display: none;
+            }
+
+            .paper {
+                border: 0;
+                box-shadow: none;
+                border-radius: 0;
+            }
+
+            .paper-inner {
+                padding: 0;
+            }
+
+            .btn {
+                display: none;
+            }
+        }
+    </style>
 </head>
 <body>
-  <div class="shell">
-    <section class="hero">
-      <h1>C3PO-shodan Attack Surface</h1>
-      <p>Reference layout for the generated HTML dashboard.</p>
-    </section>
-    <section class="grid">
-      <article class="panel">Summary cards</article>
-      <article class="panel">Top hosts</article>
-      <article class="panel">IP exposure</article>
-      <article class="panel">Screenshot evidence</article>
-    </section>
-  </div>
+    <div class="viewer-shell">
+        <aside class="sidebar" aria-label="Document navigation">
+            <section class="panel toc">
+                <h2>Contents</h2>
+                <nav>
+                    <a href="#timeline">0. Discovery Timeline</a>
+                    <a href="#summary">1. Executive Summary</a>
+                    <a href="#scope">2. Scope And Claim Boundary</a>
+                    <a href="#context">3. Product And Feature Context</a>
+                    <a href="#technical">4. Technical Analysis</a>
+                    <a href="#impact">5. Impact Assessment</a>
+                    <a href="#reproduce">6. Steps To Reproduce</a>
+                    <a href="#evidence">7. Evidence Index</a>
+                    <a href="#remediation">8. Remediation And Validation</a>
+                    <a href="#disclosure">9. Disclosure Data</a>
+                </nav>
+            </section>
+
+            <section class="panel info-card">
+                <p class="eyebrow">Disclosure Package</p>
+                <h1>[Vulnerability Title Placeholder]</h1>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+
+                <div class="quick-facts">
+                    <div class="fact">
+                        <span class="meta-label">Primary Weakness</span>
+                        <div class="meta-value">[CWE-ID] [Name]</div>
+                    </div>
+                    <div class="fact">
+                        <span class="meta-label">Observed Exposure</span>
+                        <div class="meta-value">[Vulnerability Outcome]</div>
+                    </div>
+                    <div class="fact">
+                        <span class="meta-label">Affected Component</span>
+                        <div class="meta-value">[Component / Port]</div>
+                    </div>
+                    <div class="fact">
+                        <span class="meta-label">Evidence Date</span>
+                        <div class="meta-value">[Date]</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel researcher-card">
+                <h2>Researcher</h2>
+                <p><strong>Patrick Binder</strong></p>
+                <p class="small muted">Offensive Cybersecurity Expert specializing in Microsoft Cloud pentesting and adversarial research.</p>
+                <div style="margin-top: 12px;">
+                    <a href="https://patrickbrand34846.z6.web.core.windows.net/" class="badge" style="text-decoration: none;">[ Portfolio ]</a>
+                </div>
+            </section>
+        </aside>
+
+        <main class="paper-wrap">
+            <article class="paper">
+                <div class="paper-inner">
+                    <header class="cover">
+                        <p class="cover-kicker">Public CVE Report / Research Blog Post Template</p>
+                        <h1>[Vulnerability Title: Clear and Descriptive]</h1>
+                        <p class="lede">[Lede: A concise summary of the vulnerability, the affected product, and the confirmed security impact.]</p>
+
+                        <div class="cover-grid">
+                            <section class="summary-card">
+                                <span class="meta-label">Product</span>
+                                <strong>[Product Name]</strong>
+                            </section>
+                            <section class="summary-card">
+                                <span class="meta-label">Confirmed Version</span>
+                                <strong>[vX.X.X]</strong>
+                            </section>
+                            <section class="summary-card">
+                                <span class="meta-label">Authentication</span>
+                                <strong>[None / Required]</strong>
+                            </section>
+                            <section class="summary-card">
+                                <span class="meta-label">Observed Severity</span>
+                                <strong>[Low / Medium / High / Critical]</strong>
+                            </section>
+                        </div>
+                    </header>
+
+                    <section id="timeline" class="paper-section">
+                        <h2>0. Discovery and Communication Timeline</h2>
+                        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+                        <table class="key-table">
+                            <tr>
+                                <th>Date</th>
+                                <th>Event</th>
+                                <th>Notes</th>
+                            </tr>
+                            <tr>
+                                <td>[Date]</td>
+                                <td>Initial Discovery</td>
+                                <td>Vulnerability identified during security research.</td>
+                            </tr>
+                            <tr>
+                                <td>[Date]</td>
+                                <td>Verification</td>
+                                <td>Exploit proof-of-concept confirmed in lab environment.</td>
+                            </tr>
+                            <tr>
+                                <td>[Date]</td>
+                                <td>Vendor Notification</td>
+                                <td>Initial report sent to vendor security team.</td>
+                            </tr>
+                            <tr>
+                                <td>[Date]</td>
+                                <td>Vendor Acknowledgment</td>
+                                <td>Vendor confirmed receipt of report.</td>
+                            </tr>
+                            <tr>
+                                <td>[Date]</td>
+                                <td>Public Disclosure</td>
+                                <td>Coordinated disclosure after fix availability.</td>
+                            </tr>
+                        </table>
+                    </section>
+
+                    <section id="summary" class="paper-section">
+                        <h2>1. Executive Summary</h2>
+                        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+                        <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
+
+                        <div class="grid-three">
+                            <section class="callout">
+                                <div class="pill-group">
+                                    <span class="badge">Confirmed</span>
+                                </div>
+                                <h3>[Directly Supported]</h3>
+                                <p class="small">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+                            </section>
+                            <section class="callout">
+                                <div class="pill-group">
+                                    <span class="badge">Confirmed</span>
+                                </div>
+                                <h3>[Impacted Surface]</h3>
+                                <p class="small">Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+                            </section>
+                            <section class="callout">
+                                <div class="pill-group">
+                                    <span class="badge">Inferred</span>
+                                </div>
+                                <h3>[Root Cause Theory]</h3>
+                                <p class="small">Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.</p>
+                            </section>
+                        </div>
+                    </section>
+
+                    <section id="scope" class="paper-section">
+                        <h2>2. Scope And Claim Boundary</h2>
+
+                        <h3>2.1 Tested Product Identification</h3>
+                        <table class="key-table">
+                            <tr>
+                                <th>Vendor</th>
+                                <td>[Vendor Name]</td>
+                            </tr>
+                            <tr>
+                                <th>Product</th>
+                                <td>[Product Name]</td>
+                            </tr>
+                            <tr>
+                                <th>Observed Platform</th>
+                                <td>[OS / Architecture]</td>
+                            </tr>
+                            <tr>
+                                <th>Affected Component</th>
+                                <td>[Service / Port / Endpoint]</td>
+                            </tr>
+                            <tr>
+                                <th>Observed Version</th>
+                                <td>[vX.X.X]</td>
+                            </tr>
+                            <tr>
+                                <th>Primary Weakness</th>
+                                <td>[CWE-ID]: [Name]</td>
+                            </tr>
+                        </table>
+
+                        <h3>2.2 Boundaries Of The Claim</h3>
+                        <div class="grid-three">
+                            <section class="callout">
+                                <h3>Confirmed</h3>
+                                <ul>
+                                    <li>Lorem ipsum dolor sit amet.</li>
+                                    <li>Consectetur adipiscing elit.</li>
+                                    <li>Sed do eiusmod tempor.</li>
+                                </ul>
+                            </section>
+                            <section class="callout">
+                                <h3>Inferred</h3>
+                                <ul>
+                                    <li>Ut enim ad minim veniam.</li>
+                                    <li>Quis nostrud exercitation.</li>
+                                    <li>Ullamco laboris nisi.</li>
+                                </ul>
+                            </section>
+                            <section class="callout">
+                                <h3>Not Claimed</h3>
+                                <ul>
+                                    <li>Duis aute irure dolor.</li>
+                                    <li>In reprehenderit in voluptate.</li>
+                                    <li>Velit esse cillum dolore.</li>
+                                </ul>
+                            </section>
+                        </div>
+                    </section>
+
+                    <section id="context" class="paper-section">
+                        <h2>3. Product And Feature Context</h2>
+                        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+                        <ul>
+                            <li><strong>[Key Feature]:</strong> Lorem ipsum dolor sit amet, consectetur adipiscing elit.</li>
+                            <li><strong>[User Workflow]:</strong> Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</li>
+                            <li><strong>[Service Role]:</strong> Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</li>
+                        </ul>
+                    </section>
+
+                    <section id="technical" class="paper-section">
+                        <h2>4. Technical Analysis</h2>
+                        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+
+                        <section class="terminal-card" aria-label="Endpoint">
+                            <div class="terminal-head">
+                                <div class="terminal-title">Target Endpoint</div>
+                                <div class="actions">
+                                    <button class="btn" type="button" data-copy-label="Copy" data-copied-label="Copied" onclick="copyCode(this)">Copy</button>
+                                </div>
+                            </div>
+                            <pre class="code-block">[GET /api/v1/resource/{payload}]</pre>
+                        </section>
+
+                        <h3>4.1 Exploitation Mechanics</h3>
+                        <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.</p>
+
+                        <section class="terminal-card" aria-label="Payload">
+                            <div class="terminal-head">
+                                <div class="terminal-title">Payload Example</div>
+                                <div class="actions">
+                                    <button class="btn" type="button" data-copy-label="Copy" data-copied-label="Copied" onclick="copyCode(this)">Copy</button>
+                                </div>
+                            </div>
+                            <pre class="code-block">[Vulnerability Specific Payload Here]</pre>
+                        </section>
+                    </section>
+
+                    <section id="impact" class="paper-section">
+                        <h2>5. Impact Assessment</h2>
+                        <p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium.</p>
+                        <ul>
+                            <li>[Impact Point 1]: Lorem ipsum dolor sit amet, consectetur adipiscing elit.</li>
+                            <li>[Impact Point 2]: Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</li>
+                            <li>[Impact Point 3]: Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</li>
+                        </ul>
+                    </section>
+
+                    <section id="reproduce" class="paper-section">
+                        <h2>6. Steps To Reproduce</h2>
+                        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+
+                        <section class="terminal-card" aria-label="Reproduction">
+                            <div class="terminal-head">
+                                <div class="terminal-title">Proof of Concept Command</div>
+                                <div class="actions">
+                                    <button class="btn" type="button" data-copy-label="Copy" data-copied-label="Copied" onclick="copyCode(this)">Copy</button>
+                                </div>
+                            </div>
+                            <pre class="code-block">curl -i "[Target URL with Payload]"</pre>
+                        </section>
+                    </section>
+
+                    <section id="evidence" class="paper-section">
+                        <h2>7. Evidence Index</h2>
+                        <table class="evidence-table">
+                            <tr>
+                                <th>ID</th>
+                                <th>Artifact</th>
+                                <th>Status</th>
+                                <th>Value</th>
+                            </tr>
+                            <tr>
+                                <td>E-01</td>
+                                <td>[PoC Request]</td>
+                                <td>[Confirmed]</td>
+                                <td>[Description of evidence and what it proves.]</td>
+                            </tr>
+                        </table>
+                    </section>
+
+                    <section id="remediation" class="paper-section">
+                        <h2>8. Remediation And Validation</h2>
+                        <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.</p>
+                        <ol>
+                            <li>[Step 1]: Lorem ipsum dolor sit amet.</li>
+                            <li>[Step 2]: Consectetur adipiscing elit.</li>
+                            <li>[Step 3]: Sed do eiusmod tempor incididunt.</li>
+                        </ol>
+                    </section>
+
+                    <section id="disclosure" class="paper-section">
+                        <h2>9. Disclosure Data</h2>
+                        <h3>9.1 Reporter</h3>
+                        <p>Patrick Binder</p>
+                        <p>Website: <a href="https://patrickbrand34846.z6.web.core.windows.net/">patrickbrand34846.z6.web.core.windows.net</a></p>
+                        
+                        <div class="footer">
+                            <div>
+                                <p class="footer-meta">Report file: [filename].html</p>
+                                <p class="footer-meta">Researcher: Patrick Binder</p>
+                            </div>
+                            <div>
+                                <p class="footer-meta">Generated from: CVE Template v1.0</p>
+                                <p class="footer-meta">Style: Modern Monochrome Disclosure</p>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </article>
+        </main>
+    </div>
+
+    <script>
+        function copyCode(btn) {
+            const block = btn.closest('.terminal-card').querySelector('.code-block');
+            navigator.clipboard.writeText(block.innerText);
+
+            const original = btn.dataset.copyLabel || btn.innerText;
+            const copied = btn.dataset.copiedLabel || 'Copied';
+            btn.innerText = copied;
+            setTimeout(() => {
+                btn.innerText = original;
+            }, 1500);
+        }
+    </script>
 </body>
 </html>

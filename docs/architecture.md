@@ -8,6 +8,7 @@ C3PO-shodan follows the same root-centric orchestration model as `C3PO-Osinter`,
 
 1. `run.sh` and `bin/run.sh`
    Coordinate validation, collection, screenshots, and rendering.
+   Their behavior is guided by `GEMINI.md` and `SKILL.md` files at the repo root and per workflow phase.
 
 2. `scripts/common.sh`
    Centralizes path resolution, dotenv loading, config parsing, and helper functions.

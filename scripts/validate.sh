@@ -11,7 +11,11 @@ FILES_TO_CHECK=(
     "$CONFIG_DIR/provider-fragments.txt"
     "$DOCS_DIR/index-ref.html"
     "$DOCS_DIR/style.md"
-    "$SCRIPTS_DIR/collect-attack-surface.py"
+    "$SCRIPTS_DIR/orchestrate.py"
+    "$SCRIPTS_DIR/generate-summary.py"
+    "$PROJECT_ROOT/pipeline/__init__.py"
+    "$PROJECT_ROOT/subtaker.py"
+    "$SCRIPTS_DIR/domain_lookup.py"
     "$SCRIPTS_DIR/capture-screenshots.py"
     "$SCRIPTS_DIR/render-report.py"
 )
@@ -38,9 +42,16 @@ if config_is_true "$SCREENSHOT_ENABLED"; then
     fi
 fi
 
-if [ -n "$TARGET_DOMAIN" ] && [[ ! "$TARGET_DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]; then
-    echo "[!] Invalid target domain: $TARGET_DOMAIN" >&2
-    exit 1
+if [ -n "$TARGET_DOMAIN" ]; then
+    IFS=',' read -r -a DOMAIN_LIST <<< "$TARGET_DOMAIN"
+    for domain in "${DOMAIN_LIST[@]}"; do
+        domain="${domain,,}"
+        domain="${domain// /}"
+        if [ -z "$domain" ] || [[ ! "$domain" =~ ^[A-Za-z0-9.-]+$ ]]; then
+            echo "[!] Invalid target domain: $domain" >&2
+            exit 1
+        fi
+    done
 fi
 
 echo "[*] Validation successful."
