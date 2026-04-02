@@ -13,7 +13,7 @@
 ---
   <div align="center">
   <img src="logo.jpg" alt="C3PO-shodan Logo" width="400">
-
+</div>
 ---
 
 ## 🤖 Overview
