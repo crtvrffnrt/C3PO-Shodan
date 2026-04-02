@@ -19,16 +19,21 @@ def _run_batch(title: str, payload: dict, instruction: str, model: str = "") -> 
     return res.text if res.ok else f"Error: {res.raw}"
 
 
-def run_pipeline(domains: list[str], output_dir: str, model: str = "") -> dict:
-    config = load_discovery_config()
-    provider_fragments_path = Path(__file__).resolve().parent.parent / "config" / "provider-fragments.txt"
-    with open(provider_fragments_path, "r", encoding="utf-8") as f:
-        provider_fragments = f.read()
-
+def run_pipeline(
+    domains: list[str],
+    config: dict,
+    provider_fragments_path: str | Path,
+    docs_index_ref: str | Path,
+    output_dir: str,
+    model: str = "",
+    debug: bool = False
+) -> dict:
+    discovery_cfg = load_discovery_config(config)
+    
     results = []
     for domain in domains:
         print(f"[*] Processing {domain}...")
-        data = discover_shodan_assets(domain, provider_fragments, config)
+        data = discover_shodan_assets(domain, str(provider_fragments_path), config, debug=debug)
         results.append(data)
 
     # Simplified aggregation for the prompt to save tokens

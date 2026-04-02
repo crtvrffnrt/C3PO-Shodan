@@ -23,13 +23,16 @@ Orchestrate Shodan attack-surface discovery and EASM reporting.
 
 Options:
   -d, --domain   Target root domain (supports subdomains like www.example.com)
-  --debug, -Debug Enable shell tracing
+  --debug, -Debug, -DEBUG Enable shell tracing and verbose logging
   -h, --help     Show this help
 EOF
 }
 
 DEBUG_MODE=false
+EXTRA_ARGS=()
 TARGET_INPUT=""
+
+# ... (omitted regex and validate_domain for brevity in thought, but I must provide full context in replace)
 
 # Regex for domain validation (supports subdomains)
 DOMAIN_REGEX="^([a-zA-Z0-9](([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,})$"
@@ -125,8 +128,9 @@ while [[ $# -gt 0 ]]; do
             TARGET_INPUT="${2:-}"
             shift 2
             ;;
-        --debug|-Debug)
+        --debug|-Debug|-DEBUG)
             DEBUG_MODE=true
+            EXTRA_ARGS+=("--debug")
             set -x
             shift
             ;;
@@ -208,10 +212,17 @@ PIPELINE_CMD=(
     --output-dir "$OUTPUT_DIR"
     --json-output "$RAW_JSON"
     --html-output "$HTML_REPORT"
+    "${EXTRA_ARGS[@]}"
 )
 # Increased timeout to 35m as requested
-if ! run_with_timeout 35m "${PIPELINE_CMD[@]}" >/dev/null 2>&1; then
-    echo "[*] Phase 1 timed out or failed; continuing with fallback report data."
+if [ "$DEBUG_MODE" = true ]; then
+    if ! run_with_timeout 35m "${PIPELINE_CMD[@]}"; then
+        echo "[*] Phase 1 failed; continuing with fallback report data."
+    fi
+else
+    if ! run_with_timeout 35m "${PIPELINE_CMD[@]}" >/dev/null 2>&1; then
+        echo "[*] Phase 1 timed out or failed; continuing with fallback report data."
+    fi
 fi
 ensure_fallback_payload "$RAW_JSON" "$TARGET_DOMAIN_JOINED"
 
