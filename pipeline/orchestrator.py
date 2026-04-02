@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .discovery import discover_scope, load_discovery_config
 from .gemini_client import render_json_prompt, run_gemini
-from .models import Asset, DomainResult, Finding, ReportPayload, to_builtin
+from .models import DomainResult, ReportPayload, to_builtin
 from .reporting import render_html, render_json
 from .shodan_adapter import discover_shodan_assets
 
@@ -19,39 +15,49 @@ def _run_batch(title: str, payload: dict, instruction: str, model: str = "") -> 
     return res.text if res.ok else f"Error: {res.raw}"
 
 
+def _normalize_related_domains(primary_domain: str, related_domains: list[str] | None) -> list[str]:
+    values = []
+    seen = set()
+    for item in [primary_domain, *(related_domains or [])]:
+        value = str(item).strip().lower().rstrip(".")
+        if value and value not in seen:
+            seen.add(value)
+            values.append(value)
+    return values
+
+
 def run_pipeline(
     domains: list[str],
+    related_domains: list[str] | None,
     config: dict,
     provider_fragments_path: str | Path,
     docs_index_ref: str | Path,
     output_dir: str,
     model: str = "",
-    debug: bool = False
+    debug: bool = False,
 ) -> dict:
-    discovery_cfg = load_discovery_config(config)
-    
-    results = []
-    for domain in domains:
-        print(f"[*] Processing {domain}...")
-        data = discover_shodan_assets(domain, str(provider_fragments_path), config, debug=debug)
-        results.append(data)
+    primary_domain = str(domains[0]).strip().lower()
+    connected_domains = _normalize_related_domains(primary_domain, related_domains)
 
-    # Simplified aggregation for the prompt to save tokens
-    batch4_input = {
-        "targets": domains,
-        "summary_stats": [r.get("summary") for r in results],
-        "top_risks": []
+    print(f"[*] Processing {primary_domain}...")
+    collected = discover_shodan_assets(primary_domain, str(provider_fragments_path), config, debug=debug)
+
+    batch_input = {
+        "targets": [primary_domain],
+        "connected_domains": connected_domains,
+        "summary_stats": [collected.get("summary", {})],
+        "top_risks": [],
     }
-    for r in results:
-        for h in r.get("hosts", [])[:3]:
-            batch4_input["top_risks"].append({
-                "host": h.get("hostname"),
-                "level": h.get("risk_level"),
-                "factors": h.get("risk_factors"),
-                "vulns": h.get("vulns")
-            })
+    for host in collected.get("hosts", [])[:5]:
+        batch_input["top_risks"].append(
+            {
+                "host": host.get("hostname"),
+                "level": host.get("risk_level"),
+                "factors": host.get("risk_factors"),
+                "vulns": host.get("vulns"),
+            }
+        )
 
-    # CISO-optimized prompt
     ciso_instruction = (
         "Act as a Senior EASM Specialist. Generate a concise CISO Executive Report (2-3 min read).\n"
         "1. HEADLINE: Business Impact (High-level statement on operational/reputational risk).\n"
@@ -64,34 +70,44 @@ def run_pipeline(
     try:
         management_summary = _run_batch(
             "CISO-Executive-Summary",
-            batch4_input,
+            batch_input,
             ciso_instruction,
             model=model,
         )
     except Exception as exc:
         management_summary = f"Gemini summary failed: {exc}"
 
-    # Merge results
-    merged_data = results[0] if results else {}
-    if len(results) > 1:
-        # Basic merge logic
-        for r in results[1:]:
-            merged_data["hosts"].extend(r.get("hosts", []))
-            merged_data["ips"].extend(r.get("ips", []))
-            # ... more merge logic if needed
+    domain_result = DomainResult(
+        root_domain=primary_domain,
+        connected_domains=connected_domains,
+        discovered_count=int(collected.get("summary", {}).get("host_count", 0) or 0),
+        considered_count=int(collected.get("summary", {}).get("host_count", 0) or 0),
+        deep_checked_count=0,
+        errors=[],
+        selection_limited=False,
+        selected_assets=collected.get("hosts", [])[:10],
+    )
+
+    summary = dict(collected.get("summary", {}))
+    summary.setdefault("domain_count", len(connected_domains))
+    summary.setdefault("asset_count", int(summary.get("host_count", 0) or 0))
+    summary.setdefault("deep_check_count", 0)
 
     payload = ReportPayload(
-        target=merged_data.get("target", {}),
-        summary=merged_data.get("summary", {}),
-        discoveries=merged_data.get("discoveries", {}),
-        hosts=merged_data.get("hosts", []),
-        ips=merged_data.get("ips", []),
+        generated_at=collected.get("target", {}).get("generated_at")
+        or datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        root_domains=[primary_domain],
+        domains=[domain_result],
+        summary=summary,
         management_summary=management_summary,
+        artifacts={},
     )
-    
+
     payload_dict = to_builtin(payload)
-    docs_index_ref = Path(__file__).resolve().parent.parent / "docs" / "index-ref.html"
-    payload_dict["html"] = render_html(payload_dict, docs_index_ref)
+    payload_dict["target"] = collected.get("target", {})
+    payload_dict["discoveries"] = collected.get("discoveries", {})
+    payload_dict["hosts"] = collected.get("hosts", [])
+    payload_dict["ips"] = collected.get("ips", [])
+    payload_dict["html"] = render_html(payload_dict, str(docs_index_ref or Path()))
     payload_dict["json"] = render_json(payload_dict)
-    
     return payload_dict

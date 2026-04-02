@@ -31,6 +31,7 @@ EOF
 DEBUG_MODE=false
 EXTRA_ARGS=()
 TARGET_INPUT=""
+RELATED_DOMAINS=()
 
 # ... (omitted regex and validate_domain for brevity in thought, but I must provide full context in replace)
 
@@ -46,22 +47,23 @@ validate_domain() {
     return 0
 }
 
-split_domains() {
+normalize_target_domain() {
     local raw="${1:-}"
     local item
     IFS=',' read -r -a _domain_parts <<< "$raw"
-    DOMAIN_ARGS=()
     for item in "${_domain_parts[@]}"; do
         item="${item// /}"
         item="$(printf %s "$item" | tr '[:upper:]' '[:lower:]')"
         if [ -n "$item" ]; then
             if validate_domain "$item"; then
-                DOMAIN_ARGS+=("$item")
-            else
-                exit 1
+                TARGET_DOMAIN="$item"
+                return 0
             fi
+            exit 1
         fi
     done
+    TARGET_DOMAIN=""
+    return 1
 }
 
 run_with_timeout() {
@@ -157,29 +159,28 @@ if [ -z "$TARGET_INPUT" ]; then
     exit 1
 fi
 
-split_domains "$TARGET_INPUT"
-if [ ${#DOMAIN_ARGS[@]} -eq 0 ]; then
-    echo "[!] No valid target domains specified." >&2
+if ! normalize_target_domain "$TARGET_INPUT"; then
+    echo "[!] No valid target domain specified." >&2
     usage
     exit 1
 fi
 
-# Auto-discovery for single domain input
-if [ ${#DOMAIN_ARGS[@]} -eq 1 ]; then
-    echo -e "${GREEN}[*] Single domain detected. Attempting to discover related domains...${NC}"
-    MAP_OUTPUT="$(python3 "$PROJECT_ROOT/scripts/domain_lookup.py" "${DOMAIN_ARGS[0]}" --max 10)"
-    if [ -n "$MAP_OUTPUT" ]; then
-        DOMAIN_ARGS=()
-        while IFS= read -r line; do
-            if [ -n "$line" ]; then
-                DOMAIN_ARGS+=("$line")
-            fi
-        done <<< "$MAP_OUTPUT"
-        echo -e "${GREEN}[+] Discovered ${#DOMAIN_ARGS[@]} related domain(s).${NC}"
-    fi
+echo -e "${GREEN}[*] Target domain: ${TARGET_DOMAIN}${NC}"
+echo -e "${GREEN}[*] Checking for related domains for report context...${NC}"
+MAP_OUTPUT="$(python3 "$PROJECT_ROOT/scripts/domain_lookup.py" "${TARGET_DOMAIN}" --max 10 || true)"
+if [ -n "$MAP_OUTPUT" ]; then
+    while IFS= read -r line; do
+        line="$(printf %s "$line" | tr '[:upper:]' '[:lower:]')"
+        if [ -n "$line" ]; then
+            RELATED_DOMAINS+=("$line")
+        fi
+    done <<< "$MAP_OUTPUT"
+    echo -e "${GREEN}[+] Related domains recorded for report: ${#RELATED_DOMAINS[@]}${NC}"
 fi
 
-TARGET_DOMAIN_JOINED="$(IFS=','; printf '%s' "${DOMAIN_ARGS[*]}")"
+if [ ${#RELATED_DOMAINS[@]} -eq 0 ]; then
+    RELATED_DOMAINS=("$TARGET_DOMAIN")
+fi
 
 if [ -z "${SHODANAPI:-}" ]; then
     SHODANAPI="$(resolve_shodan_key || echo "")"
@@ -192,11 +193,11 @@ fi
 
 # 0. Preflight
 ./scripts/fetch-context.sh
-./scripts/validate.sh "$TARGET_DOMAIN_JOINED"
+./scripts/validate.sh "$TARGET_DOMAIN"
 
 REPORT_DATE="$(date +%Y-%m-%d)"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-TARGET_SLUG="$(slugify "${DOMAIN_ARGS[0]}")"
+TARGET_SLUG="$(slugify "${TARGET_DOMAIN}")"
 
 RAW_JSON="$OUTPUT_DIR/attack_surface_${TARGET_SLUG}_${REPORT_DATE}.json"
 SCREENSHOT_MANIFEST="$OUTPUT_DIR/attack_surface_${TARGET_SLUG}_${REPORT_DATE}_screenshots.json"
@@ -205,15 +206,18 @@ HTML_REPORT="$OUTPUT_DIR/attack_surface_${TARGET_SLUG}_${REPORT_DATE}.html"
 LATEST_HTML="$PROJECT_ROOT/attack_surface_latest.html"
 NUCLEI_OUTPUT="$OUTPUT_DIR/nuclei_${TARGET_SLUG}_${REPORT_DATE}.jsonl"
 
-echo "[*] Phase 1: Running modular discovery/triage pipeline for $TARGET_DOMAIN_JOINED ..."
+echo "[*] Phase 1: Running modular discovery/triage pipeline for $TARGET_DOMAIN ..."
 PIPELINE_CMD=(
     python3 "$SCRIPTS_DIR/orchestrate.py"
-    "${DOMAIN_ARGS[@]}"
+    "$TARGET_DOMAIN"
     --output-dir "$OUTPUT_DIR"
     --json-output "$RAW_JSON"
     --html-output "$HTML_REPORT"
     "${EXTRA_ARGS[@]}"
 )
+for related_domain in "${RELATED_DOMAINS[@]}"; do
+    PIPELINE_CMD+=(--related-domain "$related_domain")
+done
 # Increased timeout to 35m as requested
 if [ "$DEBUG_MODE" = true ]; then
     if ! run_with_timeout 35m "${PIPELINE_CMD[@]}"; then
@@ -224,7 +228,7 @@ else
         echo "[*] Phase 1 timed out or failed; continuing with fallback report data."
     fi
 fi
-ensure_fallback_payload "$RAW_JSON" "$TARGET_DOMAIN_JOINED"
+ensure_fallback_payload "$RAW_JSON" "$TARGET_DOMAIN"
 
 TXT_FINDINGS_JSON="$OUTPUT_DIR/txtfindings_${TARGET_SLUG}_${REPORT_DATE}.json"
 echo "[*] Phase 2: Enriching TXT DNS evidence ..."
