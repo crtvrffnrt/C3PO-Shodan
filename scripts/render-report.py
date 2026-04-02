@@ -83,26 +83,26 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
     return f"""
       <article class="host-card">
         <div class="host-head">
-          <div>
+          <div class="host-title-group">
+            <span class="eyebrow" style="margin-bottom:4px;">Target Asset</span>
             <h3>{escape(host.get("hostname", ""))}</h3>
-            <span class="muted mono" style="font-size:10px;">{escape(", ".join(host.get("sources", [])))}</span>
+            <span class="muted mono" style="font-size:10px;">Sources: {escape(", ".join(host.get("sources", [])))}</span>
           </div>
-          <div class="risk-pill badge-{host.get('risk_level', 'low')}">
+          <div class="risk-badge badge-{host.get('risk_level', 'low')}">
             {escape(host.get('risk_level', '').upper())} {host.get('risk_score', 0)}
           </div>
         </div>
         
-        <div class="kv-stack">
-          <div class="kv"><span>Primary IP</span><strong>{escape(primary_ip)}</strong></div>
-          <div class="kv"><span>HTTP URL</span><strong>{escape(host.get("http", {}).get("url", "n/a"))}</strong></div>
+        <div class="kv-grid">
+          <div class="kv"><span class="meta-label">Primary IP</span><strong class="mono">{escape(primary_ip)}</strong></div>
+          <div class="kv"><span class="meta-label">HTTP URL</span><strong class="mono">{escape(host.get("http", {}).get("url", "n/a"))}</strong></div>
         </div>
 
-        <div class="pill-row">{services}</div>
-        <div class="pill-row">{vulns}</div>
+        <div class="pill-group">{services}{vulns}</div>
 
-        <div style="margin-top:16px;">
-          <span style="font-size:10px; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:8px;">Risk Profile</span>
-          <ul style="margin:0; padding-left:18px; font-size:12px; color:var(--text-secondary);">{factors or '<li>Baseline risk detected.</li>'}</ul>
+        <div class="risk-factors">
+          <span class="meta-label">Risk Profile</span>
+          <ul>{factors or '<li>Baseline risk detected.</li>'}</ul>
         </div>
 
         {screenshot_html}
@@ -133,7 +133,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         ("Nuclei (C/H)", f"{nuclei_critical} / {nuclei_high}"),
     ]
     summary_card_html = "".join(
-        f'<article class="summary-card"><span>{escape(label)}</span><strong>{escape(value)}</strong></article>'
+        f'<section class="summary-card"><span class="meta-label">{escape(label)}</span><strong>{escape(value)}</strong></section>'
         for label, value in summary_cards
     )
 
@@ -141,10 +141,10 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     nuclei_rows = "".join(
         f"""
         <tr>
-          <td><span class="badge-{r.get('info', {}).get('severity', 'low')}">{escape(r.get('info', {}).get('severity', '').upper())}</span></td>
-          <td class="mono">{escape(r.get('template-id', ''))}</td>
-          <td>{escape(r.get('info', {}).get('name', ''))}</td>
-          <td class="mono">{escape(r.get('matched-at', ''))}</td>
+          <td><span class="badge badge-{r.get('info', {}).get('severity', 'low')}">{escape(r.get('info', {}).get('severity', '').upper())}</span></td>
+          <td class="mono small">{escape(r.get('template-id', ''))}</td>
+          <td class="small">{escape(r.get('info', {}).get('name', ''))}</td>
+          <td class="mono small">{escape(r.get('matched-at', ''))}</td>
         </tr>
         """
         for r in nuclei_results[:50]
@@ -152,34 +152,36 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
 
     takeover_html = "".join(
         f"""
-        <article class="finding-card">
-          <h4>{escape(item.get('hostname', ''))}</h4>
-          <p>{escape(join_list(item.get('reasons', []), empty='No reason recorded'))}</p>
+        <article class="callout">
+          <div class="pill-group"><span class="badge">Takeover Target</span></div>
+          <h3>{escape(item.get('hostname', ''))}</h3>
+          <p class="small">{escape(join_list(item.get('reasons', []), empty='No reason recorded'))}</p>
         </article>
         """
         for item in discoveries.get("takeover_candidates", [])[:12]
-    ) or '<article class="finding-card"><h4>No Takeover Signals</h4><p>Current heuristics indicate stable infrastructure.</p></article>'
+    ) or '<article class="callout"><h3>No Takeover Signals</h3><p class="small">Current heuristics indicate stable infrastructure.</p></article>'
 
     txt_html = "".join(
         f"""
-        <article class="finding-card">
-          <h4>{escape(item.get('hostname', ''))}</h4>
-          <p class="label">{escape(item.get('label', ''))}</p>
-          <code>{escape(item.get('value', ''))}</code>
+        <article class="callout">
+          <div class="pill-group"><span class="badge">DNS Intelligence</span></div>
+          <h3>{escape(item.get('hostname', ''))}</h3>
+          <p class="meta-label" style="margin-top:8px;">{escape(item.get('label', ''))}</p>
+          <code class="mono" style="display:block; margin-top:8px; font-size:11px; word-break:break-all; background:#f7f8fa; padding:8px; border-radius:8px; border:1px solid var(--line);">{escape(item.get('value', ''))}</code>
         </article>
         """
         for item in discoveries.get("interesting_txt", [])[:12]
-    ) or '<article class="finding-card"><h4>No TXT Signals</h4><p>No interesting DNS evidence collected.</p></article>'
+    ) or '<article class="callout"><h3>No TXT Signals</h3><p class="small">No interesting DNS evidence collected.</p></article>'
 
     ip_rows = "".join(
         f"""
         <tr>
-          <td class="mono">{escape(item.get('ip', ''))}</td>
-          <td class="mono">{escape(item.get('network_hint', ''))}</td>
-          <td>{escape(join_list(item.get('hostnames', [])))}</td>
-          <td class="mono">{escape(join_list([str(port) for port in item.get('ports', [])]))}</td>
-          <td>{escape(join_list(item.get('products', [])))}</td>
-          <td class="muted">{escape(item.get('org', '') or 'n/a')}</td>
+          <td class="mono small">{escape(item.get('ip', ''))}</td>
+          <td class="mono small">{escape(item.get('network_hint', ''))}</td>
+          <td class="small">{escape(join_list(item.get('hostnames', [])))}</td>
+          <td class="mono small">{escape(join_list([str(port) for port in item.get('ports', [])]))}</td>
+          <td class="small">{escape(join_list(item.get('products', [])))}</td>
+          <td class="muted small">{escape(item.get('org', '') or 'n/a')}</td>
         </tr>
         """
         for item in ip_assets[:80]
@@ -193,304 +195,333 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EASM | {escape(target.get('core_domain', ''))}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
   <style>
     :root {{
-      --font-ui: "Space Grotesk", system-ui, -apple-system, sans-serif;
-      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-      --bg-main: #03030a;
-      --bg-secondary: #050111;
-      --bloom-magenta: rgba(255, 79, 248, 0.18);
-      --bloom-cyan: rgba(76, 246, 255, 0.18);
-      --panel-bg: rgba(3, 5, 12, 0.92);
-      --panel-border: 1px solid rgba(255, 255, 255, 0.22);
-      --panel-shadow: 0 45px 110px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      --text-main: #f4f7ff;
-      --text-muted: #7f8cad;
-      --accent: #4cf6ff;
-      --accent-magenta: #ff4ff8;
-      --ok: #5cff8d;
-      --warn: #e8d66c;
-      --danger: #ff4c68;
-      --radius: 14px;
+      --viewer-bg: #eef1f4;
+      --viewer-bg-soft: #f6f7f9;
+      --paper: #ffffff;
+      --paper-strong: #fbfbfc;
+      --text: #111111;
+      --text-soft: #2a2a2a;
+      --text-muted: #666666;
+      --line: #d7dbe0;
+      --line-strong: #c4c9cf;
+      --shadow: 0 24px 60px rgba(0, 0, 0, 0.08);
+      --radius-lg: 28px;
+      --radius-md: 18px;
+      --radius-sm: 12px;
+      --danger: #d93025;
+      --warn: #f29900;
+      --ok: #1e8e3e;
+      --accent: #1a73e8;
     }}
     * {{ box-sizing: border-box; }}
+    html {{ scroll-behavior: smooth; }}
     body {{
       margin: 0;
-      background: linear-gradient(var(--bg-main), var(--bg-secondary));
-      color: var(--text-main);
-      font-family: var(--font-ui);
-      line-height: 1.6;
-      font-size: 14px;
-      overflow-x: hidden;
       min-height: 100vh;
-      position: relative;
+      background: linear-gradient(180deg, #f7f8fa 0%, #eef1f4 100%);
+      color: var(--text);
+      font: 400 14px/1.68 "Manrope", sans-serif;
     }}
-    body::before {{
-      content: "";
-      position: fixed;
-      inset: 0;
-      background:
-        radial-gradient(ellipse at 20% 20%, var(--bloom-magenta), transparent 45%),
-        radial-gradient(ellipse at 80% 40%, var(--bloom-cyan), transparent 45%),
-        repeating-linear-gradient(
-          to bottom,
-          rgba(255, 255, 255, 0.02) 0,
-          rgba(255, 255, 255, 0.02) 2px,
-          transparent 4px,
-          transparent 8px
-        );
-      pointer-events: none;
-      z-index: 0;
-    }}
-    .dust-film {{
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 0;
-      background-image:
-        radial-gradient(rgba(255, 255, 255, 0.055) 0.55px, transparent 1.2px),
-        radial-gradient(rgba(255, 255, 255, 0.035) 0.6px, transparent 1.3px),
-        linear-gradient(transparent 65%, rgba(255, 255, 255, 0.04));
-      background-size: 240px 240px, 320px 320px, 100% 100%;
-      background-position: 30px 40px, 140px 120px, 0 0;
-      opacity: 0.6;
-      mix-blend-mode: screen;
-    }}
-    .mono {{ font-family: var(--font-mono); }}
-    .shell {{
-      max-width: 1400px;
+    a {{ color: inherit; }}
+    .viewer-shell {{
+      width: min(1460px, calc(100% - 28px));
       margin: 0 auto;
-      padding: 40px 20px;
-      position: relative;
-      z-index: 1;
-    }}
-    header {{
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      margin-bottom: 40px;
-      padding-bottom: 20px;
-      border-bottom: var(--panel-border);
-    }}
-    .header-left .eyebrow {{
-      color: var(--accent);
-      text-transform: uppercase;
-      letter-spacing: 0.3em;
-      font-size: 10px;
-      margin-bottom: 8px;
-      display: block;
-    }}
-    h1 {{
-      margin: 0;
-      font-size: 32px;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-    }}
-    .header-right {{ text-align: right; }}
-    .header-right span {{ display: block; color: var(--text-muted); font-size: 11px; text-transform: uppercase; }}
-    .header-right strong {{ color: var(--accent-magenta); font-size: 13px; font-family: var(--font-mono); }}
-
-    .summary-grid {{
+      padding: 28px 0 52px;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 40px;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 28px;
     }}
-    .summary-card {{
-      background: var(--panel-bg);
-      border: var(--panel-border);
-      border-radius: var(--radius);
-      box-shadow: var(--panel-shadow);
-      padding: 24px;
+    .sidebar {{
+      position: sticky;
+      top: 20px;
+      align-self: start;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      backdrop-filter: blur(14px);
+      gap: 18px;
     }}
-    .summary-card span {{ color: var(--text-muted); text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em; font-weight: 600; }}
-    .summary-card strong {{ font-size: 24px; color: var(--accent); font-family: var(--font-mono); }}
-
-    section {{ margin-bottom: 60px; }}
-    section h2 {{
-      font-size: 18px;
+    .panel {{
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.05);
+      padding: 22px 22px 20px;
+    }}
+    .eyebrow, .meta-label, .terminal-title, .badge, .pill, .toc a, .footer-meta {{
+      font-family: "IBM Plex Mono", monospace;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
-      letter-spacing: 0.15em;
-      margin-bottom: 24px;
-      color: var(--text-main);
-      display: flex;
+    }}
+    .eyebrow {{ margin: 0 0 12px; font-size: 0.7rem; color: var(--text-muted); }}
+    .sidebar h1, .paper h1, .paper h2, .paper h3 {{
+      font-family: "Space Grotesk", sans-serif;
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      color: #060606;
+    }}
+    .sidebar h1 {{ margin: 0 0 14px; font-size: 1.5rem; }}
+    .sidebar p {{ margin: 0; color: var(--text-soft); font-size: 0.9rem; }}
+    .sidebar .muted {{ color: var(--text-muted); }}
+    .quick-facts {{ margin-top: 16px; display: grid; gap: 12px; }}
+    .fact {{
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 12px 13px;
+      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+    }}
+    .meta-label {{ display: block; font-size: 0.65rem; color: var(--text-muted); margin-bottom: 4px; }}
+    .meta-value {{ font-size: 0.9rem; font-weight: 700; color: var(--text); }}
+    .toc h2, .info-card h2, .researcher-card h2 {{ margin: 0 0 14px; font-size: 0.9rem; }}
+    .toc nav {{ display: grid; gap: 8px; }}
+    .toc a {{
+      display: block;
+      font-size: 0.72rem;
+      text-decoration: none;
+      color: var(--text-soft);
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      transition: all 140ms ease;
+    }}
+    .toc a:hover {{ background: #fafbfc; border-color: var(--line); transform: translateX(2px); }}
+    .paper-wrap {{ min-width: 0; }}
+    .paper {{
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 34px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }}
+    .paper-inner {{ padding: 44px 52px 54px; }}
+    .cover {{ padding-bottom: 26px; border-bottom: 1px solid var(--line); }}
+    .cover-kicker {{ margin: 0 0 14px; font: 600 0.72rem/1 "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }}
+    .paper h1 {{ margin: 0 0 16px; font-size: clamp(1.8rem, 4vw, 2.8rem); }}
+    .lede {{ margin: 0; max-width: 860px; font-size: 1.05rem; color: var(--text-soft); }}
+    .cover-grid {{ margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }}
+    .summary-card {{
+      padding: 16px 16px 15px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+    }}
+    .summary-card .meta-label {{ margin-bottom: 8px; }}
+    .summary-card strong {{ display: block; font-size: 1rem; line-height: 1.35; font-family: "IBM Plex Mono", monospace; }}
+    .paper-section {{ padding-top: 30px; border-top: 1px solid var(--line); margin-top: 30px; }}
+    .paper-section:first-of-type {{ border-top: 0; margin-top: 0; padding-top: 0; }}
+    .paper h2 {{ margin: 0 0 16px; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 0.05em; }}
+    .paper h3 {{ margin: 24px 0 12px; font-size: 1.05rem; }}
+    .paper p, .paper li {{ color: var(--text-soft); }}
+    .paper p {{ margin: 0 0 14px; }}
+    .grid-two {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }}
+    .grid-three {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }}
+    .callout {{
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+      padding: 18px 18px 16px;
+    }}
+    .callout h3 {{ margin-top: 0; font-size: 1rem; color: var(--text); }}
+    .badge {{
+      display: inline-flex;
       align-items: center;
-      gap: 12px;
-    }}
-    section h2::after {{
-      content: "";
-      height: 1px;
-      flex: 1;
-      background: linear-gradient(90deg, rgba(255,255,255,0.1), transparent);
-    }}
-
-    .card {{
-      background: var(--panel-bg);
-      border: var(--panel-border);
-      border-radius: var(--radius);
-      box-shadow: var(--panel-shadow);
-      padding: 24px;
-      margin-bottom: 20px;
-      position: relative;
-      backdrop-filter: blur(14px);
-    }}
-    
-    table {{ width: 100%; border-collapse: collapse; text-align: left; }}
-    th {{
-      padding: 12px 16px;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.65rem;
+      line-height: 1;
+      background: #f7f7f7;
       color: var(--text-muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      border-bottom: var(--panel-border);
     }}
-    td {{ padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.03); }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.65rem;
+      font-family: "IBM Plex Mono", monospace;
+      border: 1px solid var(--line);
+      background: #fff;
+    }}
+    .pill.port {{ color: var(--ok); border-color: #ceead6; background: #e6f4ea; }}
+    .pill.vuln {{ color: var(--danger); border-color: #fad2cf; background: #fce8e6; }}
+    .pill-group {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }}
     
-    .badge-critical {{ color: var(--danger); font-weight: bold; }}
-    .badge-high {{ color: var(--warn); font-weight: bold; }}
-    .badge-medium {{ color: var(--accent); font-weight: bold; }}
-    .badge-low {{ color: var(--ok); font-weight: bold; }}
+    .evidence-table {{ width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 0.85rem; }}
+    .evidence-table th, .evidence-table td {{ text-align: left; vertical-align: middle; padding: 10px 14px; border-bottom: 1px solid var(--line); }}
+    .evidence-table th {{ background: #f7f8fa; color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-family: "IBM Plex Mono", monospace; }}
+    .evidence-table tr:last-child td {{ border-bottom: 0; }}
 
-    .finding-grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 20px;
-    }}
-    .finding-card {{
-      background: var(--panel-bg);
-      border: var(--panel-border);
-      border-radius: var(--radius);
-      box-shadow: var(--panel-shadow);
-      padding: 20px;
-      backdrop-filter: blur(14px);
-    }}
-    .finding-card h4 {{ margin: 0 0 10px; color: var(--accent); }}
-    .finding-card p {{ margin: 0; color: var(--text-muted); font-size: 13px; }}
-    .finding-card code {{ display: block; margin-top: 12px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 4px; font-size: 12px; color: var(--accent-magenta); word-break: break-all; border: 1px dashed rgba(255,255,255,0.1); }}
+    .badge-critical {{ background: #fce8e6 !important; color: #d93025 !important; border-color: #fad2cf !important; }}
+    .badge-high {{ background: #fff4e5 !important; color: #f29900 !important; border-color: #ffe1bb !important; }}
+    .badge-medium {{ background: #e8f0fe !important; color: #1a73e8 !important; border-color: #d2e3fc !important; }}
+    .badge-low {{ background: #e6f4ea !important; color: #1e8e3e !important; border-color: #ceead6 !important; }}
 
-    .hosts-grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-      gap: 24px;
-    }}
     .host-card {{
-      background: var(--panel-bg);
-      border: var(--panel-border);
-      border-radius: var(--radius);
-      box-shadow: var(--panel-shadow);
-      padding: 28px;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      backdrop-filter: blur(14px);
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      transition: all 0.2s ease;
+      position: relative;
     }}
-    .host-card:hover {{ transform: translateY(-2px); box-shadow: 0 30px 80px rgba(0,0,0,0.8); border-color: var(--accent); }}
+    .host-card:hover {{ border-color: var(--line-strong); box-shadow: 0 12px 24px rgba(0,0,0,0.04); }}
     .host-head {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }}
-    .host-head h3 {{ margin: 0; font-size: 20px; letter-spacing: -0.01em; }}
-    .risk-pill {{
-      padding: 4px 12px;
-      border-radius: 4px;
-      font-size: 11px;
+    .host-title-group h3 {{ margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }}
+    .risk-badge {{
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.7rem;
       font-weight: 700;
-      background: rgba(255,255,255,0.05);
-      font-family: var(--font-mono);
+      font-family: "IBM Plex Mono", monospace;
+      border: 1px solid var(--line);
     }}
-
-    .kv-stack {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }}
-    .kv span {{ display: block; color: var(--text-muted); font-size: 10px; text-transform: uppercase; margin-bottom: 4px; }}
-    .kv strong {{ display: block; font-size: 13px; word-break: break-all; font-family: var(--font-mono); }}
-
-    .pill-row {{ display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }}
-    .pill {{ padding: 3px 10px; border-radius: 4px; font-size: 11px; border: 1px solid rgba(255,255,255,0.1); font-family: var(--font-mono); }}
-    .pill.port {{ color: var(--ok); border-color: rgba(92, 255, 141, 0.3); }}
-    .pill.vuln {{ color: var(--danger); border-color: rgba(255, 76, 104, 0.3); }}
-
-    .shot-wrap {{ margin-top: 16px; border-radius: 8px; overflow: hidden; border: var(--panel-border); }}
-    .shot {{ width: 100%; display: block; filter: brightness(0.8) contrast(1.1); }}
-
+    .kv-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }}
+    .kv strong {{ font-size: 0.85rem; word-break: break-all; color: var(--text-soft); }}
+    .risk-factors ul {{ margin: 0; padding-left: 18px; font-size: 0.85rem; color: var(--text-muted); }}
+    .risk-factors li + li {{ margin-top: 4px; }}
+    .shot-wrap {{ margin-top: 16px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }}
+    .shot {{ width: 100%; display: block; }}
+    .mono {{ font-family: "IBM Plex Mono", monospace; }}
+    .small {{ font-size: 0.8rem; }}
     .muted {{ color: var(--text-muted); }}
+    
+    @media (max-width: 1180px) {{
+      .viewer-shell {{ grid-template-columns: 1fr; }}
+      .sidebar {{ position: static; }}
+    }}
   </style>
 </head>
 <body>
-  <div class="dust-film" aria-hidden="true"></div>
-  <div class="shell">
-    <header>
-      <div class="header-left">
-        <span class="eyebrow">External Attack Surface Management</span>
+  <div class="viewer-shell">
+    <aside class="sidebar">
+      <section class="panel toc">
+        <h2>Contents</h2>
+        <nav>
+          <a href="#summary">1. Executive Summary</a>
+          <a href="#nuclei">2. Nuclei Scan Findings</a>
+          <a href="#targets">3. Exposure Targets</a>
+          <a href="#intelligence">4. DNS Intelligence</a>
+          <a href="#inventory">5. Infrastructure Inventory</a>
+        </nav>
+      </section>
+
+      <section class="panel info-card">
+        <p class="eyebrow">EASM Session</p>
         <h1>{escape(target.get('core_domain', ''))}</h1>
-      </div>
-      <div class="header-right">
-        <span>System Status</span>
-        <strong>OPERATIONAL // {escape(target.get('generated_at', ''))}</strong>
-      </div>
-    </header>
+        <p>Attack surface analysis report for the specified domain and its sub-infrastructure.</p>
+        <div class="quick-facts">
+          <div class="fact">
+            <span class="meta-label">Total Assets</span>
+            <div class="meta-value">{escape(str(summary.get("original_total_hosts", 0)))}</div>
+          </div>
+          <div class="fact">
+            <span class="meta-label">Web Targets</span>
+            <div class="meta-value">{escape(str(summary.get("web_host_count", 0)))}</div>
+          </div>
+          <div class="fact">
+            <span class="meta-label">Generated At</span>
+            <div class="meta-value">{escape(target.get('generated_at', ''))}</div>
+          </div>
+        </div>
+      </section>
 
+      <section class="panel researcher-card">
+        <h2>Researcher</h2>
+        <p><strong>Patrick Binder</strong></p>
+        <p class="small muted">Offensive Cybersecurity Expert specializing in Microsoft Cloud pentesting and adversarial research.</p>
+        <div style="margin-top: 12px;">
+          <a href="https://patrickbrand34846.z6.web.core.windows.net/" class="badge" style="text-decoration: none;">[ Portfolio ]</a>
+        </div>
+      </section>
+    </aside>
 
-    <div class="summary-grid">
-      {summary_card_html}
-    </div>
+    <main class="paper-wrap">
+      <article class="paper">
+        <div class="paper-inner">
+          <header class="cover">
+            <p class="cover-kicker">External Attack Surface Management Report</p>
+            <h1>{escape(target.get('core_domain', ''))}</h1>
+            <p class="lede">Comprehensive analysis of the external attack surface, identifying high-risk exposure points, service vulnerabilities, and infrastructure metadata.</p>
 
-    <section>
-      <h2>Nuclei Vulnerability Scan</h2>
-      <div class="card" style="overflow-x: auto;">
-        <table>
-          <thead>
-            <tr>
-              <th>Severity</th>
-              <th>Template</th>
-              <th>Name</th>
-              <th>Target</th>
-            </tr>
-          </thead>
-          <tbody>
-            {nuclei_rows}
-          </tbody>
-        </table>
-      </div>
-    </section>
+            <div class="cover-grid">
+              {summary_card_html}
+            </div>
+          </header>
 
-    <section>
-      <h2>Top 10 Exposure Targets</h2>
-      <div class="hosts-grid">
-        {host_cards}
-      </div>
-    </section>
+          <section id="summary" class="paper-section">
+            <h2>1. Executive Summary</h2>
+            <p>The reconnaissance phase for <strong>{escape(target.get('core_domain', ''))}</strong> has concluded. The analysis identified {len(hosts)} primary high-interest targets from a total discovery pool of {summary.get("original_total_hosts", 0)} assets.</p>
+            <p>Risk scoring indicates a {summary.get('critical_count', 0) > 0 and 'CRITICAL' or summary.get('high_count', 0) > 0 and 'HIGH' or 'BASELINE'} risk profile based on observed vulnerabilities and exposed management interfaces.</p>
+          </section>
 
-    <section>
-      <h2>Takeover & DNS Intelligence</h2>
-      <div class="finding-grid">
-        {takeover_html}
-        {txt_html}
-      </div>
-    </section>
+          <section id="nuclei" class="paper-section">
+            <h2>2. Nuclei Vulnerability Scan</h2>
+            <p>Automated vulnerability templates were matched against discovered web entrypoints. The following findings were recorded:</p>
+            <table class="evidence-table">
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th>Template</th>
+                  <th>Finding Name</th>
+                  <th>Matched Target</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nuclei_rows}
+              </tbody>
+            </table>
+          </section>
 
-    <section>
-      <h2>Infrastructure Inventory</h2>
-      <div class="card" style="overflow-x: auto;">
-        <table>
-          <thead>
-            <tr>
-              <th>IP Address</th>
-              <th>Network</th>
-              <th>Hostnames</th>
-              <th>Ports</th>
-              <th>Products</th>
-              <th>Organization</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ip_rows}
-          </tbody>
-        </table>
-      </div>
-    </section>
+          <section id="targets" class="paper-section">
+            <h2>3. Top Exposure Targets</h2>
+            <p>Detailed analysis of high-priority assets based on service composition, known vulnerabilities, and risk scoring.</p>
+            <div class="grid-two">
+              {host_cards}
+            </div>
+          </section>
 
-    <footer style="margin-top: 100px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 11px; display: flex; justify-content: space-between;">
-      <div>C3PO-SHODAN // EASM ENGINE</div>
-      <div>CLASSIFIED OPERATOR ACCESS ONLY</div>
-    </footer>
+          <section id="intelligence" class="paper-section">
+            <h2>4. Takeover & DNS Intelligence</h2>
+            <div class="grid-two">
+              {takeover_html}
+              {txt_html}
+            </div>
+          </section>
+
+          <section id="inventory" class="paper-section">
+            <h2>5. Infrastructure Inventory</h2>
+            <p>Condensed view of discovered IP infrastructure and network groupings.</p>
+            <div style="overflow-x: auto;">
+              <table class="evidence-table">
+                <thead>
+                  <tr>
+                    <th>IP Address</th>
+                    <th>Network</th>
+                    <th>Hostnames</th>
+                    <th>Ports</th>
+                    <th>Products</th>
+                    <th>Organization</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ip_rows}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <footer style="margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between;">
+            <div class="footer-meta">C3PO-SHODAN // EASM ENGINE</div>
+            <div class="footer-meta">CONFIDENTIAL RECONNAISSANCE DATA</div>
+          </footer>
+        </div>
+      </article>
+    </main>
   </div>
 </body>
 </html>
