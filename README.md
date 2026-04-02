@@ -11,6 +11,7 @@
   **A Bash-orchestrated Shodan attack-surface workflow for deterministic infrastructure discovery.**
 </div>
 ---
+  <div align="center">
   <img src="logo.jpg" alt="C3PO-shodan Logo" width="400">
 
 ---
