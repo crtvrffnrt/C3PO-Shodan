@@ -33,6 +33,7 @@ def build_parser():
     p.add_argument("--html-output")
     p.add_argument("--json-output")
     p.add_argument("--model", default="gemini-2.0-flash")
+    p.add_argument("--debug", action="store_true")
     return p
 
 
@@ -47,6 +48,7 @@ def main(argv: list[str]) -> int:
         docs_index_ref=str(project_root / "docs" / "index-ref.html"),
         output_dir=args.output_dir,
         model=args.model,
+        debug=args.debug,
     )
     os.makedirs(args.output_dir, exist_ok=True)
     html_path = args.html_output or str(Path(args.output_dir) / "report.html")
