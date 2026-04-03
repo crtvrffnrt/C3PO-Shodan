@@ -595,9 +595,11 @@ def scan_target(target):
     
     try:
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=600)
+        stderr_text = (result.stderr or "").strip()
+        stdout_text = (result.stdout or "").strip()
         
-        if result.returncode == 42:
-            print(f" [!] Cloudflare rate limit detected for {hostname}. Switching to local tools for future targets.")
+        if result.returncode == 42 or "rate limit" in stderr_text.lower() or "rate limit" in stdout_text.lower():
+            print(f" [!] Cloudflare API limit detected for {hostname}. Switching to local fallback for this target and future targets.")
             with state["lock"]:
                 state["rate_limited"] = True
             return None
@@ -609,6 +611,7 @@ def scan_target(target):
                     cf_data = json.load(f)
             
             print(f" [+] Success: {hostname}")
+            print(f" [+] Cloudflare screenshot detected: {hostname}")
             return {
                 "hostname": hostname,
                 "url": url,
@@ -618,13 +621,13 @@ def scan_target(target):
                 "cloudflare_info": cf_data
             }
         else:
-            print(f" [!] Cloudflare failed for {hostname}: {result.stderr}")
+            print(f" [!] Cloudflare failed for {hostname}: {stderr_text or stdout_text or 'Unknown error'}")
             return {
                 "hostname": hostname,
                 "url": url,
                 "status": "failed",
                 "tool": "cloudflare",
-                "reason": result.stderr or "Unknown error"
+                "reason": stderr_text or stdout_text or "Unknown error"
             }
     except Exception as e:
         print(f" [!] Error scanning {hostname}: {str(e)}")
