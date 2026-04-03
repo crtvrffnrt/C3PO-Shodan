@@ -148,6 +148,6 @@ The generated reports provide a comprehensive, interactive view of the discovere
 </div>
 
 <div align="center">
-  <img src="example.png" alt="Example Report" width="600">
+  <img src="example.png" alt="Example Report" width="1000">
 </div>
 
