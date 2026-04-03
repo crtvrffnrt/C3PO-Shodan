@@ -520,11 +520,14 @@ if config_is_true "${SCREENSHOT_ENABLED:-true}"; then
     if [ -n "${CF_ACCOUNT_ID:-}" ] && [ -n "${CF_API_TOKEN:-}" ]; then
         CF_SCANNER_ENABLED=true
         info "[+] Cloudflare credentials detected. Using Cloudflare URL Scanner as primary source."
+    elif [ -n "${CF_ACCOUNT_ID:-}" ] && [ -n "${CF_API_KEY:-}" ] && [ -n "${CF_EMAIL:-}" ]; then
+        CF_SCANNER_ENABLED=true
+        info "[+] Legacy Cloudflare credentials detected. Using Cloudflare URL Scanner as primary source."
     fi
 
     if [ "$CF_SCANNER_ENABLED" = true ]; then
         # Primary Cloudflare Scan Path with local fallback logic
-        python3 - "$RAW_JSON" "$SCREENSHOT_MANIFEST" "$SCREENSHOT_DIR" "${MAX_SCREENSHOTS:-16}" "$CF_ACCOUNT_ID" "$CF_API_TOKEN" <<'PY'
+python3 - "$RAW_JSON" "$SCREENSHOT_MANIFEST" "$SCREENSHOT_DIR" "${MAX_SCREENSHOTS:-16}" "$CF_ACCOUNT_ID" "${CF_API_TOKEN:-}" "${CF_API_KEY:-}" "${CF_EMAIL:-}" <<'PY'
 import json
 import os
 import subprocess
@@ -534,7 +537,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-raw_json, manifest_path, screenshot_dir, max_screenshots, account_id, api_token = sys.argv[1:]
+raw_json, manifest_path, screenshot_dir, max_screenshots, account_id, api_token, api_key, email = sys.argv[1:]
 max_screenshots = int(max_screenshots)
 
 with open(raw_json, "r", encoding="utf-8") as handle:
@@ -591,7 +594,12 @@ def scan_target(target):
     
     env = os.environ.copy()
     env["CF_ACCOUNT_ID"] = account_id
-    env["CF_API_TOKEN"] = api_token
+    if api_token:
+        env["CF_API_TOKEN"] = api_token
+    if api_key:
+        env["CF_API_KEY"] = api_key
+    if email:
+        env["CF_EMAIL"] = email
     
     try:
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=600)
@@ -600,6 +608,12 @@ def scan_target(target):
         
         if result.returncode == 42 or "rate limit" in stderr_text.lower() or "rate limit" in stdout_text.lower():
             print(f" [!] Cloudflare API limit detected for {hostname}. Switching to local fallback for this target and future targets.")
+            with state["lock"]:
+                state["rate_limited"] = True
+            return None
+
+        if result.returncode == 43 or "authentication failed" in stderr_text.lower() or "authentication failed" in stdout_text.lower():
+            print(f" [!] Cloudflare authentication failed for {hostname}. Switching to local fallback for this target and future targets.")
             with state["lock"]:
                 state["rate_limited"] = True
             return None
@@ -695,7 +709,7 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2)
 PY
         record_phase_result "phase4" "ok" "Cloudflare parallel scanner completed"
-    else:
+    else
         # Fallback to local capture
         screenshot_cmd=(
             python3 "$SCRIPTS_DIR/capture-screenshots.py"

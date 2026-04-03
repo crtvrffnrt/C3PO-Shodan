@@ -84,28 +84,49 @@ chmod 600 ~/.shodan/api_key
 
 #### Cloudflare (Optional but recommended - better screenshots)
 
-To enable the Cloudflare URL Scanner as the primary source for screenshots and security intelligence, add your credentials to the `.env` file:
+To enable the Cloudflare URL Scanner as the primary source for screenshots and security intelligence, add your credentials to the `.env` file.
 
-visit https://dash.cloudflare.com/profile/api-tokens create a free account and create a austom token with the following Permission:
-and then add the ACCOUNT_ID and TOKEN to env via:
+Preferred auth is an API token created at `https://dash.cloudflare.com/profile/api-tokens` with:
 
-```bash
-All accounts - Radar:Read, URL Scanner:Edit, URL Scanner:Read
-``` 
+- `Account` -> `Cloudflare Radar:Read`
+- `Account` -> `URL Scanner:Read`
+- `Account` -> `URL Scanner:Edit`
+
+Then set:
 
 ```bash
 CF_ACCOUNT_ID="your_account_id"
 CF_API_TOKEN="your_api_token"
+```
 
+Legacy global API key auth is also supported if you already use it:
+
+```bash
+CF_ACCOUNT_ID="your_account_id"
+CF_EMAIL="your_cloudflare_email"
+CF_API_KEY="your_global_api_key"
+```
+
+Export whichever pair you use:
+
+```bash
 for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.zprofile"; do
   [ -f "$rc" ] || continue
 
   grep -q "^export CF_ACCOUNT_ID=" "$rc" || printf '\nexport CF_ACCOUNT_ID="%s"\n' "$CF_ACCOUNT_ID" >> "$rc"
-  grep -q "^export CF_API_TOKEN=" "$rc" || printf 'export CF_API_TOKEN="%s"\n' "$CF_API_TOKEN" >> "$rc"
+  if [ -n "${CF_API_TOKEN:-}" ]; then
+    grep -q "^export CF_API_TOKEN=" "$rc" || printf 'export CF_API_TOKEN="%s"\n' "$CF_API_TOKEN" >> "$rc"
+  fi
+  if [ -n "${CF_API_KEY:-}" ] && [ -n "${CF_EMAIL:-}" ]; then
+    grep -q "^export CF_API_KEY=" "$rc" || printf 'export CF_API_KEY="%s"\n' "$CF_API_KEY" >> "$rc"
+    grep -q "^export CF_EMAIL=" "$rc" || printf 'export CF_EMAIL="%s"\n' "$CF_EMAIL" >> "$rc"
+  fi
 done
 
 export CF_ACCOUNT_ID="$CF_ACCOUNT_ID"
-export CF_API_TOKEN="$CF_API_TOKEN"
+export CF_API_TOKEN="${CF_API_TOKEN:-}"
+export CF_API_KEY="${CF_API_KEY:-}"
+export CF_EMAIL="${CF_EMAIL:-}"
 ```
 
 
@@ -174,4 +195,3 @@ The generated reports provide a comprehensive, interactive view of the discovere
 <div align="center">
   <img src="example.png" alt="Example Report" width="1000">
 </div>
-

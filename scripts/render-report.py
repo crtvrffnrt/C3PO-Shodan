@@ -10,52 +10,33 @@ from typing import Optional
 
 RISKY_PORTS = {
     21: "FTP: Cleartext authentication and data transfer. High risk of credential sniffing and unauthorized file access.",
-    22: "SSH: Secure Shell. While secure, public exposure invites brute-force attacks and represents a critical entry point.",
-    23: "Telnet: Cleartext protocol. Extremely vulnerable to sniffing. Should never be public-facing.",
-    25: "SMTP: Mail transfer. Can be abused for mail relaying, spamming, or fingerprinting internal mail infrastructure.",
-    53: "DNS: Potential for DNS amplification attacks or zone transfers if misconfigured.",
-    80: "HTTP: Unencrypted web traffic. Susceptible to MITM and session hijacking.",
-    110: "POP3: Cleartext mail retrieval. Credentials and emails can be easily intercepted.",
+    22: "SSH: Secure Shell. Public exposure invites brute-force attacks and makes a management path externally reachable.",
+    23: "Telnet: Cleartext protocol. Extremely vulnerable to sniffing and should never be public-facing.",
+    25: "SMTP: Mail transfer. Can expose mail infrastructure and relay abuse opportunities.",
+    53: "DNS: Potential for amplification, recursion abuse, or zone disclosure if misconfigured.",
+    80: "HTTP: Unencrypted web traffic. Susceptible to interception and session abuse.",
+    110: "POP3: Cleartext mail retrieval. Credentials and content may be intercepted.",
     111: "RPCBind: Often used for port mapping in older Unix services. High risk of information disclosure.",
     135: "RPC: Windows RPC. Frequently targeted for remote code execution and service discovery.",
     137: "NetBIOS: Windows naming service. Discloses internal network information and hostnames.",
-    139: "NetBIOS: Windows file sharing. High risk of unauthorized data access and worm propagation.",
+    139: "NetBIOS: Windows file sharing. High risk of unauthorized data access.",
     143: "IMAP: Cleartext mail access. Sensitive communications and credentials at risk.",
-    161: "SNMP: Network management. If community strings are weak, provides deep visibility into infrastructure.",
-    389: "LDAP: Directory access. Risk of sensitive user and organizational data exposure.",
-    445: "SMB: Windows file sharing. Target for EternalBlue and similar critical exploits. Should NEVER be public.",
+    161: "SNMP: Network management. Weak community strings can expose deep infrastructure data.",
+    389: "LDAP: Directory access. May disclose sensitive organizational metadata.",
+    445: "SMB: Windows file sharing. Commonly targeted and rarely appropriate on the public internet.",
     548: "AFP: Apple Filing Protocol. Potential for unauthorized file access.",
-    1433: "MSSQL: Database access. Target for brute-force and SQL injection. High impact if compromised.",
-    1521: "Oracle: Database access. Similar risks to MSSQL; critical organizational data exposure.",
-    2049: "NFS: Network File System. Risk of unauthorized file system mounting and data theft.",
-    3306: "MySQL: Database access. High risk of credential theft and data breach.",
-    3389: "RDP: Remote Desktop. Critical entry point; target for BlueKeep and continuous brute-force.",
-    5432: "PostgreSQL: Database access. Similar risks to MySQL and MSSQL.",
-    5900: "VNC: Remote desktop. Often has weak or no authentication; high risk of full system control.",
-    6379: "Redis: In-memory store. Frequently has no password; critical for data exposure and RCE.",
-    8080: "HTTP-Alt: Often used for management interfaces (Tomcat, Jenkins) which may have weak defaults.",
-    9200: "Elasticsearch: High risk of full database indexing and data exfiltration if unauthenticated.",
-    27017: "MongoDB: NoSQL database. Historically targeted due to lack of default authentication.",
+    1433: "MSSQL: Database access. High impact if exposed with weak authentication.",
+    1521: "Oracle: Database access. Similar exposure concerns to MSSQL.",
+    2049: "NFS: Network File System. Risk of unauthorized filesystem mounting.",
+    3306: "MySQL: Database access. High risk of credential theft and data exposure.",
+    3389: "RDP: Remote Desktop. Critical entry point and brute-force target.",
+    5432: "PostgreSQL: Database access. Similar exposure concerns to MySQL and MSSQL.",
+    5900: "VNC: Remote desktop. Often weakly protected when exposed externally.",
+    6379: "Redis: In-memory store. Frequently left without strong authentication.",
+    8080: "HTTP-Alt: Often used for management interfaces and application consoles.",
+    9200: "Elasticsearch: High risk of data exposure if unauthenticated.",
+    27017: "MongoDB: Historically targeted due to missing default authentication.",
 }
-
-
-def risk_badge(level: str) -> str:
-    return {
-        "critical": "badge-critical",
-        "high": "badge-high",
-        "medium": "badge-medium",
-        "low": "badge-low",
-    }.get(level, "badge-low")
-
-
-def human_date(iso_value: str) -> str:
-    if not iso_value:
-        return "unknown"
-    try:
-        dt = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
-        return dt.strftime("%b %d, %Y %H:%M UTC")
-    except Exception:
-        return iso_value
 
 
 def inline_image(path: str) -> str:
@@ -64,7 +45,7 @@ def inline_image(path: str) -> str:
     try:
         with open(path, "rb") as handle:
             encoded = base64.b64encode(handle.read()).decode("utf-8")
-        ext = os.path.splitext(path)[1].lower().strip(".")
+        ext = os.path.splitext(path)[1].lower().strip(".") or "png"
         return f"data:image/{ext};base64,{encoded}"
     except Exception:
         return ""
@@ -84,6 +65,39 @@ def join_list(items: list, empty: str = "none") -> str:
     return ", ".join(valid) if valid else empty
 
 
+def human_date(iso_value: str) -> str:
+    if not iso_value:
+        return "unknown"
+    try:
+        dt = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
+        return dt.strftime("%b %d, %Y %H:%M UTC")
+    except Exception:
+        return iso_value
+
+
+def severity_rank(level: str) -> int:
+    return {
+        "critical": 4,
+        "high": 3,
+        "medium": 2,
+        "low": 1,
+    }.get((level or "").lower(), 0)
+
+
+def severity_class(level: str) -> str:
+    return {
+        "critical": "critical",
+        "high": "high",
+        "medium": "medium",
+        "low": "low",
+    }.get((level or "").lower(), "low")
+
+
+def risk_label(score: int, level: str) -> str:
+    level_text = (level or "low").upper()
+    return f"{level_text} {score}"
+
+
 def vulnerability_summary_rows(hosts: list[dict]) -> str:
     all_vulns = []
     for host in hosts:
@@ -91,119 +105,123 @@ def vulnerability_summary_rows(hosts: list[dict]) -> str:
         for cve_id, info in details.items():
             all_vulns.append({
                 "cve": cve_id,
-                "cvss": info.get("cvss", 0.0),
+                "cvss": float(info.get("cvss", 0.0) or 0.0),
                 "summary": info.get("summary", "No details available."),
-                "host": host.get("hostname", "n/a")
+                "host": host.get("hostname", "n/a"),
+                "severity": host.get("risk_level", "low"),
             })
-    
-    # Sort by CVSS score descending
+
     all_vulns.sort(key=lambda x: x["cvss"], reverse=True)
-    
+
     rows = ""
-    for v in all_vulns[:20]: # Show top 20
-        cvss_val = v["cvss"]
-        badge_class = "low"
-        if cvss_val >= 9.0: badge_class = "critical"
-        elif cvss_val >= 7.0: badge_class = "high"
-        elif cvss_val >= 4.0: badge_class = "medium"
-        
+    for v in all_vulns[:20]:
+        badge_class = severity_class(
+            "critical" if v["cvss"] >= 9.0 else "high" if v["cvss"] >= 7.0 else "medium" if v["cvss"] >= 4.0 else "low"
+        )
         rows += f"""
         <tr>
           <td class="mono small"><strong>{escape(v['cve'])}</strong></td>
-          <td><span class="badge badge-{badge_class}">{escape(str(cvss_val))}</span></td>
+          <td><span class="badge badge-{badge_class}">{escape(f"{v['cvss']:.1f}")}</span></td>
           <td class="mono small">{escape(v['host'])}</td>
           <td class="small">{escape(v['summary'])}</td>
+          <td><span class="badge badge-neutral">{escape(v['severity'].upper())}</span></td>
         </tr>
         """
-    return rows or '<tr><td colspan="4" class="muted">No infrastructure vulnerabilities identified.</td></tr>'
+    return rows or '<tr><td colspan="5" class="muted">No infrastructure vulnerabilities identified.</td></tr>'
 
 
 def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
     screenshot_html = ""
     cf_intel_html = ""
-    
+
     if screenshot_entry and screenshot_entry.get("status") == "captured":
         image = inline_image(screenshot_entry.get("path", ""))
         if image:
             screenshot_html = (
-                '<div class="shot-wrap">'
+                '<figure class="shot-frame">'
                 f'<img class="shot" src="{image}" alt="Screenshot of {escape(host.get("hostname", ""))}">'
-                "</div>"
+                f'<figcaption class="shot-caption mono">Screenshot evidence | {escape(host.get("hostname", ""))}</figcaption>'
+                "</figure>"
             )
-        
-        # Add Cloudflare specific intelligence to the card if available
+
         cf_info = screenshot_entry.get("cloudflare_info", {})
         if cf_info:
             tech_stack = ", ".join(cf_info.get("tech_stack", [])) or "n/a"
             cf_intel_html = f"""
-            <div class="cf-intel-mini">
-              <span class="meta-label">Cloudflare Intelligence</span>
-              <div class="kv-grid mini">
-                <div class="kv"><span class="meta-label">Server</span><strong class="mono small">{escape(cf_info.get("server", "n/a"))}</strong></div>
-                <div class="kv"><span class="meta-label">TLS</span><strong class="mono small">{escape(cf_info.get("tls_protocol", "n/a"))} ({escape(cf_info.get("security_state", "n/a"))})</strong></div>
-              </div>
-              <div class="kv"><span class="meta-label">Tech Stack</span><strong class="small">{escape(tech_stack)}</strong></div>
+            <div class="evidence-strip">
+              <div class="kv"><span class="meta-label">Cloudflare Server</span><strong class="mono small">{escape(cf_info.get("server", "n/a"))}</strong></div>
+              <div class="kv"><span class="meta-label">TLS / Security</span><strong class="mono small">{escape(cf_info.get("tls_protocol", "n/a"))} / {escape(cf_info.get("security_state", "n/a"))}</strong></div>
+              <div class="kv full"><span class="meta-label">Tech Stack</span><strong class="small">{escape(tech_stack)}</strong></div>
             </div>
             """
-    
-    # Risky Port Highlighting
+
     services_list = []
     for port in host.get("ports", []):
-        port_int = int(port)
+        try:
+            port_int = int(port)
+        except Exception:
+            continue
         if port_int in RISKY_PORTS:
             risk_text = RISKY_PORTS[port_int]
             color_class = "danger" if port_int in (21, 23, 135, 139, 445, 3389, 6379, 9200) else "warn"
             services_list.append(f'<span class="pill port {color_class}" title="{escape(risk_text)}">{escape(str(port))}</span>')
         else:
             services_list.append(f'<span class="pill port">{escape(str(port))}</span>')
-    
     services = "".join(services_list[:12])
-    
-    # Red flagged CVE mini cards
+
     vulns = "".join(
         f'<span class="pill vuln" title="{escape(host.get("vuln_details", {}).get(v, {}).get("summary", "No details available."))}\nCVSS: {host.get("vuln_details", {}).get(v, {}).get("cvss", "n/a")}">{escape(str(v))}</span>'
         for v in host.get("vulns", [])[:12]
     )
 
     factors = "".join(f"<li>{escape(factor)}</li>" for factor in host.get("risk_factors", [])[:5])
-    
     ips = host.get("current_ips", [])
     primary_ip = ips[0] if ips else "n/a"
-    
-    # Shodan Metadata
-    sh_domains = ", ".join(host.get("shodan_domains", [])) or "n/a"
     sh_hostnames = ", ".join(host.get("shodan_hostnames", [])) or "n/a"
+    sh_domains = ", ".join(host.get("shodan_domains", [])) or "n/a"
+    url = host.get("http", {}).get("url", "n/a")
+    source_list = join_list(host.get("sources", []), empty="unspecified")
+    risk_class = severity_class(host.get("risk_level", "low"))
 
     return f"""
       <article class="host-card">
         <div class="host-head">
           <div class="host-title-group">
-            <span class="eyebrow" style="margin-bottom:4px;">Target Asset</span>
+            <span class="eyebrow">Top Exposure Target</span>
             <h3>{escape(host.get("hostname", ""))}</h3>
-            <span class="muted mono" style="font-size:10px;">Sources: {escape(", ".join(host.get("sources", [])))}</span>
+            <div class="host-subline mono">{escape(source_list)}</div>
           </div>
-          <div class="risk-badge badge-{host.get('risk_level', 'low')}">
-            {escape(host.get('risk_level', '').upper())} {host.get('risk_score', 0)}
+          <div class="risk-badge badge-{risk_class}">
+            {escape(risk_label(host.get('risk_score', 0), host.get('risk_level', 'low')))}
           </div>
-        </div>
-        
-        <div class="kv-grid">
-          <div class="kv"><span class="meta-label">Primary IP</span><strong class="mono">{escape(primary_ip)}</strong></div>
-          <div class="kv"><span class="meta-label">Location (City)</span><strong class="small">{escape(host.get("city", "n/a"))}</strong></div>
-          <div class="kv" style="grid-column: span 2;"><span class="meta-label">Shodan Hostnames</span><strong class="small mono" style="display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{escape(sh_hostnames)}">{escape(sh_hostnames)}</strong></div>
-          <div class="kv" style="grid-column: span 2;"><span class="meta-label">HTTP URL</span><strong class="mono small">{escape(host.get("http", {}).get("url", "n/a"))}</strong></div>
         </div>
 
-        <div class="pill-group">{services}</div>
-        <div class="vuln-grid">{vulns}</div>
+        <div class="host-metrics">
+          <div class="kv"><span class="meta-label">Primary IP</span><strong class="mono">{escape(primary_ip)}</strong></div>
+          <div class="kv"><span class="meta-label">City</span><strong>{escape(host.get("city", "n/a"))}</strong></div>
+          <div class="kv"><span class="meta-label">HTTP URL</span><strong class="mono truncate" title="{escape(url)}">{escape(url)}</strong></div>
+          <div class="kv"><span class="meta-label">Shodan Hostnames</span><strong class="mono truncate" title="{escape(sh_hostnames)}">{escape(sh_hostnames)}</strong></div>
+          <div class="kv full"><span class="meta-label">Associated Domains</span><strong class="mono truncate" title="{escape(sh_domains)}">{escape(sh_domains)}</strong></div>
+        </div>
+
+        <div class="section-label">Open Ports</div>
+        <div class="pill-group">{services or '<span class="muted small">No port data recorded.</span>'}</div>
+
+        <div class="section-label">Known Vulnerabilities</div>
+        <div class="vuln-grid">{vulns or '<span class="muted small">No CVEs recorded for this host.</span>'}</div>
 
         <div class="risk-factors">
-          <span class="meta-label">Risk Profile</span>
-          <ul>{factors or '<li>Baseline risk detected.</li>'}</ul>
+          <span class="section-label">Risk Factors</span>
+          <ul>{factors or '<li>Baseline exposure observed.</li>'}</ul>
         </div>
 
         {cf_intel_html}
         {screenshot_html}
+
+        <div class="asset-footer mono">
+          <span>Sources: {escape(source_list)}</span>
+          <span>Recorded IPs: {escape(join_list(ips))}</span>
+        </div>
       </article>
     """
 
@@ -216,10 +234,9 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     discoveries = payload.get("discoveries", {})
     screenshots = screenshot_map(manifest)
 
-    # Cloudflare Intelligence Summary
     cf_entries = [e for e in manifest.get("entries", []) if e.get("cloudflare_info")]
-    cf_intel_rows = ""
     if cf_entries:
+        cf_intel_rows = ""
         for e in cf_entries:
             info = e["cloudflare_info"]
             techs = ", ".join(info.get("tech_stack", [])) or "n/a"
@@ -228,7 +245,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
               <td class="mono small">{escape(e.get('hostname', ''))}</td>
               <td class="small">{escape(info.get('server', 'n/a'))}</td>
               <td class="mono small">{escape(info.get('tls_protocol', 'n/a'))}</td>
-              <td class="small"><span class="badge">{escape(info.get('security_state', 'n/a'))}</span></td>
+              <td><span class="badge badge-neutral">{escape(info.get('security_state', 'n/a'))}</span></td>
               <td class="small">{escape(techs)}</td>
               <td class="mono small">{escape(info.get('ip', 'n/a'))} ({escape(info.get('country', 'n/a'))})</td>
             </tr>
@@ -237,37 +254,44 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         cf_intel_rows = """
         <tr>
           <td colspan="6" class="muted">
-            <strong>N/A: No Cloudflare Intelligence available.</strong><br>
-            Cloudflare API credentials (ACCOUNT_ID, TOKEN) were not provided during this session.<br>
-            Please refer to the <a href="docs/workflows/collection/GEMINI.md" style="color:var(--accent); text-decoration:underline;">Collection Documentation</a> to enable high-fidelity scanning.
+            <strong>No Cloudflare intelligence available.</strong><br>
+            Cloudflare API credentials were not provided during this session. Refer to the collection documentation to enable enriched edge metadata.
           </td>
         </tr>
         """
 
-    # Nuclei Summary Metrics
     nuclei_critical = sum(1 for r in nuclei_results if r.get("info", {}).get("severity") == "critical")
     nuclei_high = sum(1 for r in nuclei_results if r.get("info", {}).get("severity") == "high")
     nuclei_med = sum(1 for r in nuclei_results if r.get("info", {}).get("severity") == "medium")
     nuclei_total = len(nuclei_results)
 
+    critical_count = int(summary.get("critical_count", 0) or 0)
+    high_count = int(summary.get("high_count", 0) or 0)
+    medium_count = int(summary.get("medium_count", 0) or 0)
+    web_count = int(summary.get("web_host_count", 0) or 0)
+    asset_total = int(summary.get("original_total_hosts", 0) or 0)
+
+    priority_hosts = sorted(hosts, key=lambda h: (severity_rank(h.get("risk_level")), h.get("risk_score", 0)), reverse=True)
+    top_hosts = priority_hosts[:6]
+    supporting_hosts = priority_hosts[6:12]
+
     summary_cards = [
-        ("Surface Score", str(summary.get("original_total_hosts", 0))),
-        ("Target Focus", str(len(hosts))),
-        ("Web Entrypoints", str(summary.get("web_host_count", 0))),
-        ("Risk (C/H/M)", f"{summary.get('critical_count', 0)} / {summary.get('high_count', 0)} / {summary.get('medium_count', 0)}"),
-        ("Nuclei Hits", str(nuclei_total)),
-        ("Nuclei (C/H)", f"{nuclei_critical} / {nuclei_high}"),
+        ("Discovered Assets", str(asset_total)),
+        ("Priority Targets", str(len(hosts))),
+        ("Web Exposures", str(web_count)),
+        ("Critical / High / Medium", f"{critical_count} / {high_count} / {medium_count}"),
+        ("Nuclei Findings", str(nuclei_total)),
+        ("Critical / High Nuclei", f"{nuclei_critical} / {nuclei_high}"),
     ]
     summary_card_html = "".join(
         f'<section class="summary-card"><span class="meta-label">{escape(label)}</span><strong>{escape(value)}</strong></section>'
         for label, value in summary_cards
     )
 
-    # Nuclei Findings Table
     nuclei_rows = "".join(
         f"""
         <tr>
-          <td><span class="badge badge-{r.get('info', {}).get('severity', 'low')}">{escape(r.get('info', {}).get('severity', '').upper())}</span></td>
+          <td><span class="badge badge-{severity_class(r.get('info', {}).get('severity', 'low'))}">{escape(r.get('info', {}).get('severity', '').upper())}</span></td>
           <td class="mono small">{escape(r.get('template-id', ''))}</td>
           <td class="small">{escape(r.get('info', {}).get('name', ''))}</td>
           <td class="mono small">{escape(r.get('matched-at', ''))}</td>
@@ -279,7 +303,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     takeover_html = "".join(
         f"""
         <article class="callout">
-          <div class="pill-group"><span class="badge">Takeover Target</span></div>
+          <div class="pill-group"><span class="badge badge-neutral">Takeover Target</span></div>
           <h3>{escape(item.get('hostname', ''))}</h3>
           <p class="small">{escape(join_list(item.get('reasons', []), empty='No reason recorded'))}</p>
         </article>
@@ -290,10 +314,10 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     txt_html = "".join(
         f"""
         <article class="callout">
-          <div class="pill-group"><span class="badge">DNS Intelligence</span></div>
+          <div class="pill-group"><span class="badge badge-neutral">DNS Intelligence</span></div>
           <h3>{escape(item.get('hostname', ''))}</h3>
           <p class="meta-label" style="margin-top:8px;">{escape(item.get('label', ''))}</p>
-          <code class="mono" style="display:block; margin-top:8px; font-size:11px; word-break:break-all; background:#f7f8fa; padding:8px; border-radius:8px; border:1px solid var(--line);">{escape(item.get('value', ''))}</code>
+          <code class="mono dns-value">{escape(item.get('value', ''))}</code>
         </article>
         """
         for item in discoveries.get("interesting_txt", [])[:12]
@@ -313,8 +337,11 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         for item in ip_assets[:80]
     )
 
-    host_cards = "".join(render_host_card(host, screenshots.get(host.get("hostname", ""))) for host in hosts)
-    
+    host_cards = "".join(render_host_card(host, screenshots.get(host.get("hostname", ""))) for host in top_hosts)
+    supporting_cards = "".join(render_host_card(host, screenshots.get(host.get("hostname", ""))) for host in supporting_hosts)
+
+    overall_state = "CRITICAL" if critical_count else "HIGH" if high_count else "MEDIUM" if medium_count else "BASELINE"
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -326,32 +353,33 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
   <style>
     :root {{
-      --viewer-bg: #eef1f4;
-      --viewer-bg-soft: #f6f7f9;
+      color-scheme: light;
+      --bg: #f3f5f7;
       --paper: #ffffff;
-      --paper-strong: #fbfbfc;
-      --text: #111111;
-      --text-soft: #2a2a2a;
-      --text-muted: #666666;
-      --line: #d7dbe0;
-      --line-strong: #c4c9cf;
-      --shadow: 0 24px 60px rgba(0, 0, 0, 0.08);
-      --radius-lg: 28px;
+      --paper-alt: #fafbfc;
+      --text: #101214;
+      --text-soft: #2a2f35;
+      --text-muted: #66707a;
+      --line: #dbe1e7;
+      --line-strong: #c9d1d9;
+      --shadow: 0 18px 50px rgba(16, 18, 20, 0.08);
+      --radius-lg: 26px;
       --radius-md: 18px;
       --radius-sm: 12px;
-      --danger: #d93025;
-      --warn: #f29900;
-      --ok: #1e8e3e;
-      --accent: #1a73e8;
+      --critical: #b42318;
+      --high: #c2410c;
+      --medium: #b7791f;
+      --low: #1f7a3d;
+      --accent: #234e70;
     }}
     * {{ box-sizing: border-box; }}
     html {{ scroll-behavior: smooth; }}
     body {{
       margin: 0;
       min-height: 100vh;
-      background: linear-gradient(180deg, #f7f8fa 0%, #eef1f4 100%);
+      background: linear-gradient(180deg, #f8fafc 0%, #eef2f6 100%);
       color: var(--text);
-      font: 400 16px/1.68 "Manrope", sans-serif;
+      font: 400 15px/1.65 "Manrope", sans-serif;
     }}
     a {{ color: inherit; }}
     .viewer-shell {{
@@ -372,14 +400,14 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     }}
     .panel {{
       background: rgba(255, 255, 255, 0.92);
-      border: 1px solid rgba(0, 0, 0, 0.08);
+      border: 1px solid rgba(16, 18, 20, 0.08);
       border-radius: var(--radius-lg);
-      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 14px 28px rgba(16, 18, 20, 0.05);
       padding: 22px 22px 20px;
     }}
-    .eyebrow, .meta-label, .terminal-title, .badge, .pill, .toc a, .footer-meta {{
+    .eyebrow, .meta-label, .terminal-title, .badge, .pill, .toc a, .footer-meta, .section-label, .host-subline {{
       font-family: "IBM Plex Mono", monospace;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.03em;
       text-transform: uppercase;
     }}
     .eyebrow {{ margin: 0 0 12px; font-size: 0.7rem; color: var(--text-muted); }}
@@ -393,12 +421,12 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     .sidebar p {{ margin: 0; color: var(--text-soft); font-size: 0.9rem; }}
     .sidebar .muted {{ color: var(--text-muted); }}
     .quick-facts {{ margin-top: 16px; display: grid; gap: 12px; }}
-    .fact {{
+    .fact, .summary-card {{
       border: 1px solid var(--line);
       border-radius: var(--radius-sm);
-      padding: 12px 13px;
-      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+      background: linear-gradient(180deg, #ffffff 0%, var(--paper-alt) 100%);
     }}
+    .fact {{ padding: 12px 13px; }}
     .meta-label {{ display: block; font-size: 0.65rem; color: var(--text-muted); margin-bottom: 4px; }}
     .meta-value {{ font-size: 0.9rem; font-weight: 700; color: var(--text); }}
     .toc h2, .info-card h2, .researcher-card h2 {{ margin: 0 0 14px; font-size: 0.9rem; }}
@@ -427,13 +455,8 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     .cover-kicker {{ margin: 0 0 14px; font: 600 0.72rem/1 "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }}
     .paper h1 {{ margin: 0 0 16px; font-size: clamp(1.8rem, 4vw, 2.8rem); }}
     .lede {{ margin: 0; max-width: 860px; font-size: 1.05rem; color: var(--text-soft); }}
-    .cover-grid {{ margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }}
-    .summary-card {{
-      padding: 16px 16px 15px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
-    }}
+    .cover-grid {{ margin-top: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }}
+    .summary-card {{ padding: 16px 16px 15px; }}
     .summary-card .meta-label {{ margin-bottom: 8px; }}
     .summary-card strong {{ display: block; font-size: 1rem; line-height: 1.35; font-family: "IBM Plex Mono", monospace; }}
     .paper-section {{ padding-top: 30px; border-top: 1px solid var(--line); margin-top: 30px; }}
@@ -442,12 +465,11 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     .paper h3 {{ margin: 24px 0 12px; font-size: 1.05rem; }}
     .paper p, .paper li {{ color: var(--text-soft); }}
     .paper p {{ margin: 0 0 14px; }}
-    .grid-two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
-    .grid-three {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+    .grid-two {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }}
     .callout {{
       border: 1px solid var(--line);
       border-radius: 16px;
-      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+      background: linear-gradient(180deg, #ffffff 0%, var(--paper-alt) 100%);
       padding: 18px 18px 16px;
     }}
     .callout h3 {{ margin-top: 0; font-size: 1rem; color: var(--text); }}
@@ -472,80 +494,80 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       font-family: "IBM Plex Mono", monospace;
       border: 1px solid var(--line);
       background: #fff;
-      line-height: 1;
     }}
-    .pill.port {{ color: var(--text-soft); border-color: var(--line); background: #ffffff; font-weight: 600; }}
-    .pill.port.danger {{ background: #fee2e2; color: #b91c1c; border-color: #fecaca; }}
-    .pill.port.warn {{ background: #ffedd5; color: #9a3412; border-color: #fed7aa; }}
-    .pill.vuln {{ 
-      color: #ffffff; 
-      border-color: #dc2626; 
-      background: #dc2626; 
-      font-weight: 600;
-      cursor: help;
-    }}
+    .pill.port {{ color: var(--accent); border-color: #d7e4ef; background: #edf4f8; }}
+    .pill.port.danger {{ color: var(--critical); border-color: #f5c2c7; background: #fdecec; }}
+    .pill.port.warn {{ color: var(--high); border-color: #ffd8b5; background: #fff0e6; }}
+    .pill.vuln {{ color: var(--critical); border-color: #f5c2c7; background: #fdecec; }}
     .pill-group {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }}
-    .vuln-grid {{ 
-      display: flex; 
-      flex-wrap: wrap; 
-      gap: 4px; 
-      margin-bottom: 16px; 
-      padding: 10px; 
-      background: #fff5f5; 
-      border-radius: 12px; 
-      border: 1px solid #fee2e2;
-    }}
-    
-    .evidence-table {{ width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.85rem; }}
-    .evidence-table th, .evidence-table td {{ text-align: left; vertical-align: middle; padding: 10px 14px; border-bottom: 1px solid var(--line); }}
-    .evidence-table th {{ background: #f7f8fa; color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-family: "IBM Plex Mono", monospace; }}
+    .badge-neutral {{ background: #eef2f6 !important; color: var(--text-soft) !important; border-color: var(--line) !important; }}
+    .evidence-table {{ width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; font-size: 0.86rem; background: #fff; }}
+    .evidence-table th, .evidence-table td {{ text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }}
+    .evidence-table th {{ background: #f7f9fb; color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-family: "IBM Plex Mono", monospace; }}
     .evidence-table tr:last-child td {{ border-bottom: 0; }}
-
-    .badge-critical {{ background: #fce8e6 !important; color: #d93025 !important; border-color: #fad2cf !important; }}
-    .badge-high {{ background: #fff4e5 !important; color: #f29900 !important; border-color: #ffe1bb !important; }}
-    .badge-medium {{ background: #e8f0fe !important; color: #1a73e8 !important; border-color: #d2e3fc !important; }}
-    .badge-low {{ background: #e6f4ea !important; color: #1e8e3e !important; border-color: #ceead6 !important; }}
-
+    .badge-critical {{ background: #fdecec !important; color: var(--critical) !important; border-color: #f5c2c7 !important; }}
+    .badge-high {{ background: #fff0e6 !important; color: var(--high) !important; border-color: #ffd8b5 !important; }}
+    .badge-medium {{ background: #fff8e6 !important; color: var(--medium) !important; border-color: #f4df9f !important; }}
+    .badge-low {{ background: #edf8f0 !important; color: var(--low) !important; border-color: #cce8d6 !important; }}
     .host-card {{
       background: #ffffff;
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
-      padding: 24px;
-      transition: all 0.2s ease;
+      padding: 22px;
       position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
     }}
-    .host-card:hover {{ border-color: var(--line-strong); box-shadow: 0 12px 24px rgba(0,0,0,0.04); }}
-    .host-head {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }}
+    .host-card:hover {{ border-color: var(--line-strong); box-shadow: 0 12px 24px rgba(16,18,20,0.04); }}
+    .host-head {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }}
     .host-title-group h3 {{ margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }}
+    .host-subline {{ margin-top: 6px; color: var(--text-muted); font-size: 0.68rem; word-break: break-all; }}
     .risk-badge {{
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 0.7rem;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.68rem;
       font-weight: 700;
       font-family: "IBM Plex Mono", monospace;
       border: 1px solid var(--line);
+      white-space: nowrap;
     }}
-    .kv-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }}
-    .kv-grid.mini {{ gap: 8px; margin-bottom: 8px; }}
-    .kv strong {{ font-size: 0.85rem; word-break: break-all; color: var(--text-soft); }}
+    .host-metrics {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }}
+    .host-metrics .full {{ grid-column: 1 / -1; }}
+    .kv strong {{ font-size: 0.84rem; word-break: break-word; color: var(--text-soft); }}
+    .truncate {{ display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .section-label {{ margin-top: 2px; font: 600 0.68rem/1 "IBM Plex Mono", monospace; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }}
     .risk-factors ul {{ margin: 0; padding-left: 18px; font-size: 0.85rem; color: var(--text-muted); }}
     .risk-factors li + li {{ margin-top: 4px; }}
-    .cf-intel-mini {{ 
-      margin: 16px 0; 
-      padding: 12px; 
-      background: #f8f9fa; 
-      border: 1px solid var(--line); 
-      border-radius: 12px; 
-    }}
-    .shot-wrap {{ margin-top: 16px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }}
+    .shot-frame {{ margin: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }}
     .shot {{ width: 100%; display: block; }}
+    .shot-caption {{ padding: 10px 12px; border-top: 1px solid var(--line); background: #f8fafc; font-size: 0.62rem; color: var(--text-muted); }}
+    .evidence-strip {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }}
+    .evidence-strip .full {{ grid-column: 1 / -1; }}
+    .dns-value {{
+      display: block;
+      margin-top: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #f8fafc;
+      font-size: 0.76rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }}
+    .asset-footer {{ display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--text-muted); font-size: 0.62rem; }}
     .mono {{ font-family: "IBM Plex Mono", monospace; }}
     .small {{ font-size: 0.8rem; }}
     .muted {{ color: var(--text-muted); }}
-    
     @media (max-width: 1180px) {{
       .viewer-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; }}
+    }}
+    @media (max-width: 760px) {{
+      .paper-inner {{ padding: 28px 18px 34px; }}
+      .viewer-shell {{ width: min(100% - 16px, 1460px); padding-top: 16px; }}
+      .grid-two, .cover-grid, .host-metrics, .evidence-strip {{ grid-template-columns: 1fr; }}
+      .host-head, .asset-footer {{ flex-direction: column; }}
     }}
   </style>
 </head>
@@ -556,10 +578,10 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         <h2>Contents</h2>
         <nav>
           <a href="#summary">1. Executive Summary</a>
-          <a href="#nuclei">2. Nuclei Scan Findings</a>
-          <a href="#cloudflare">3. Cloudflare Intelligence</a>
-          <a href="#targets">4. Exposure Targets</a>
-          <a href="#intelligence">5. DNS Intelligence</a>
+          <a href="#metrics">2. Key Metrics</a>
+          <a href="#priority">3. Priority Findings</a>
+          <a href="#targets">4. Top Exposed Assets</a>
+          <a href="#supporting">5. Supporting Intelligence</a>
           <a href="#inventory">6. Infrastructure Inventory</a>
         </nav>
       </section>
@@ -571,15 +593,15 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         <div class="quick-facts">
           <div class="fact">
             <span class="meta-label">Total Assets</span>
-            <div class="meta-value">{escape(str(summary.get("original_total_hosts", 0)))}</div>
+            <div class="meta-value">{escape(str(asset_total))}</div>
           </div>
           <div class="fact">
             <span class="meta-label">Web Targets</span>
-            <div class="meta-value">{escape(str(summary.get("web_host_count", 0)))}</div>
+            <div class="meta-value">{escape(str(web_count))}</div>
           </div>
           <div class="fact">
             <span class="meta-label">Generated At</span>
-            <div class="meta-value">{escape(target.get('generated_at', ''))}</div>
+            <div class="meta-value">{escape(human_date(target.get('generated_at', '')))}</div>
           </div>
         </div>
       </section>
@@ -600,8 +622,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
           <header class="cover">
             <p class="cover-kicker">External Attack Surface Management Report</p>
             <h1>{escape(target.get('core_domain', ''))}</h1>
-            <p class="lede">Comprehensive analysis of the external attack surface, identifying high-risk exposure points, service vulnerabilities, and infrastructure metadata.</p>
-
+            <p class="lede">Comprehensive analysis of the external attack surface, structured to highlight priority exposure, supporting evidence, and the assets that merit the earliest analyst review.</p>
             <div class="cover-grid">
               {summary_card_html}
             </div>
@@ -609,12 +630,11 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
 
           <section id="summary" class="paper-section">
             <h2>1. Executive Summary</h2>
-            <p>The reconnaissance phase for <strong>{escape(target.get('core_domain', ''))}</strong> has concluded. The analysis identified {len(hosts)} primary high-interest targets from a total discovery pool of {summary.get("original_total_hosts", 0)} assets.</p>
-            <p>Risk scoring indicates a {summary.get('critical_count', 0) > 0 and 'CRITICAL' or summary.get('high_count', 0) > 0 and 'HIGH' or 'BASELINE'} risk profile based on observed vulnerabilities and exposed management interfaces.</p>
-            
-            <div style="margin-top: 24px;">
+            <p>The external reconnaissance scope for <strong>{escape(target.get('core_domain', ''))}</strong> identified {asset_total} discovered assets, of which {len(hosts)} were prioritized for deeper analysis based on exposure, service composition, and observed risk indicators.</p>
+            <p>Overall exposure is assessed as <strong>{overall_state}</strong>. The most relevant findings are concentrated in exposed web services, vulnerable internet-facing hosts, and a small set of infrastructure entries requiring analyst review first.</p>
+            <div class="callout" style="margin-top: 20px;">
               <h3>Observed Infrastructure Vulnerabilities</h3>
-              <p class="small muted">Key vulnerabilities identified via Shodan host intelligence across the discovered infrastructure.</p>
+              <p class="small muted">Key vulnerabilities identified via host intelligence across the discovered infrastructure.</p>
               <table class="evidence-table">
                 <thead>
                   <tr>
@@ -622,6 +642,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
                     <th>Score</th>
                     <th>Affected Host</th>
                     <th>Vulnerability Summary</th>
+                    <th>Host Risk</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -631,9 +652,17 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
             </div>
           </section>
 
-          <section id="nuclei" class="paper-section">
-            <h2>2. Nuclei Vulnerability Scan</h2>
-            <p>Automated vulnerability templates were matched against discovered web entrypoints. The following findings were recorded:</p>
+          <section id="metrics" class="paper-section">
+            <h2>2. Key Metrics</h2>
+            <p>High-level summary for quick triage and prioritization.</p>
+            <div class="cover-grid">
+              {summary_card_html}
+            </div>
+          </section>
+
+          <section id="priority" class="paper-section">
+            <h2>3. Priority Findings</h2>
+            <p>Automated templates matched against discovered web entrypoints. Findings are ordered by severity to highlight items that deserve immediate validation.</p>
             <table class="evidence-table">
               <thead>
                 <tr>
@@ -647,11 +676,28 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
                 {nuclei_rows}
               </tbody>
             </table>
+            <h3 style="margin-top: 24px;">Nuclei Severity Breakdown</h3>
+            <div class="cover-grid">
+              <section class="summary-card"><span class="meta-label">Critical</span><strong>{nuclei_critical}</strong></section>
+              <section class="summary-card"><span class="meta-label">High</span><strong>{nuclei_high}</strong></section>
+              <section class="summary-card"><span class="meta-label">Medium</span><strong>{nuclei_med}</strong></section>
+              <section class="summary-card"><span class="meta-label">Total</span><strong>{nuclei_total}</strong></section>
+            </div>
           </section>
 
-          <section id="cloudflare" class="paper-section">
-            <h2>3. Cloudflare URL Scan Intelligence</h2>
-            <p>High-fidelity URL scanning and security metadata provided by Cloudflare's analysis engine.</p>
+          <section id="targets" class="paper-section">
+            <h2>4. Top Exposed Assets</h2>
+            <p>The most relevant hosts are presented first based on risk score, severity, and exposure characteristics.</p>
+            <div class="grid-two">
+              {host_cards}
+            </div>
+            {f'<h3 style="margin-top:24px;">Additional Priority Assets</h3><div class="grid-two">{supporting_cards}</div>' if supporting_cards else ''}
+          </section>
+
+          <section id="supporting" class="paper-section">
+            <h2>5. Supporting Intelligence</h2>
+            <p>Edge metadata, takeover candidates, and DNS observations used to support triage and deeper validation.</p>
+            <h3>Cloudflare Intelligence</h3>
             <div style="overflow-x: auto;">
               <table class="evidence-table">
                 <thead>
@@ -669,18 +715,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
                 </tbody>
               </table>
             </div>
-          </section>
-
-          <section id="targets" class="paper-section">
-            <h2>4. Top Exposure Targets</h2>
-            <p>Detailed analysis of high-priority assets based on service composition, known vulnerabilities, and risk scoring.</p>
-            <div class="grid-two">
-              {host_cards}
-            </div>
-          </section>
-
-          <section id="intelligence" class="paper-section">
-            <h2>5. Takeover & DNS Intelligence</h2>
+            <h3 style="margin-top: 24px;">DNS / Takeover Intelligence</h3>
             <div class="grid-two">
               {takeover_html}
               {txt_html}
@@ -709,7 +744,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
             </div>
           </section>
 
-          <footer style="margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between;">
+          <footer style="margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px;">
             <div class="footer-meta">C3PO-SHODAN // EASM ENGINE</div>
             <div class="footer-meta">CONFIDENTIAL RECONNAISSANCE DATA</div>
           </footer>
@@ -724,7 +759,6 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
 
 def markdown_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> str:
     target = payload.get("target", {})
-    summary = payload.get("summary", {})
     hosts = payload.get("hosts", [])
 
     lines = [
@@ -795,7 +829,7 @@ def main(argv: list[str]) -> int:
                     except json.JSONDecodeError:
                         continue
 
-    markdown = markdown_report(payload, screenshot_map(manifest), nuclei_results)
+    markdown = markdown_report(payload, manifest, nuclei_results)
     html = html_report(payload, manifest, nuclei_results)
 
     os.makedirs(os.path.dirname(args.markdown_output), exist_ok=True)
