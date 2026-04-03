@@ -12,6 +12,7 @@ attack_surface_latest.html
 *.html
 !attack_surface_latest.html
 *.png
+!example.png
 *.jpeg
 *.svg
 *.md
