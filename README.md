@@ -1,8 +1,8 @@
 <div align="center">
 
 # C3PO-shodan EASM Agent
-## Agentic approach to offensively test a domain using Shodan, Nuclei and GEMINI CLI
-
+---
+## Agentic framework for domain attack surface analysis leveraging Shodan, Nuclei, and Gemini CLI 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Bash](https://img.shields.io/badge/shell-bash-orange.svg)](https://www.gnu.org/software/bash/)
 [![Shodan](https://img.shields.io/badge/API-Shodan-red.svg)](https://www.shodan.io/)
