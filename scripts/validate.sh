@@ -9,10 +9,8 @@ TARGET_DOMAIN="${1:-}"
 FILES_TO_CHECK=(
     "$CONFIG_DIR/config.yaml"
     "$CONFIG_DIR/provider-fragments.txt"
-    "$DOCS_DIR/index-ref.html"
     "$DOCS_DIR/style.md"
     "$SCRIPTS_DIR/orchestrate.py"
-    "$SCRIPTS_DIR/generate-summary.py"
     "$PROJECT_ROOT/pipeline/__init__.py"
     "$PROJECT_ROOT/subtaker.py"
     "$SCRIPTS_DIR/domain_lookup.py"
@@ -24,6 +22,16 @@ for file in "${FILES_TO_CHECK[@]}"; do
     if [ ! -f "$file" ]; then
         echo "[!] Missing required file: $file" >&2
         exit 1
+    fi
+done
+
+OPTIONAL_FILES=(
+    "$DOCS_DIR/index-ref.html"
+)
+
+for file in "${OPTIONAL_FILES[@]}"; do
+    if [ ! -f "$file" ]; then
+        echo "[*] Optional reference file missing: $file. Continuing without it." >&2
     fi
 done
 

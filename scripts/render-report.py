@@ -301,7 +301,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     .cover-kicker {{ margin: 0 0 14px; font: 600 0.72rem/1 "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }}
     .paper h1 {{ margin: 0 0 16px; font-size: clamp(1.8rem, 4vw, 2.8rem); }}
     .lede {{ margin: 0; max-width: 860px; font-size: 1.05rem; color: var(--text-soft); }}
-    .cover-grid {{ margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }}
+    .cover-grid {{ margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }}
     .summary-card {{
       padding: 16px 16px 15px;
       border: 1px solid var(--line);
@@ -316,8 +316,8 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     .paper h3 {{ margin: 24px 0 12px; font-size: 1.05rem; }}
     .paper p, .paper li {{ color: var(--text-soft); }}
     .paper p {{ margin: 0 0 14px; }}
-    .grid-two {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }}
-    .grid-three {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; }}
+    .grid-two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
+    .grid-three {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }}
     .callout {{
       border: 1px solid var(--line);
       border-radius: 16px;

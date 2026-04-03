@@ -1,5 +1,7 @@
 domain_ct_enabled: "true"
 domain_ct_timeout_seconds: "20"
+gemini_enabled: "true"
+gemini_timeout_seconds: "180"
 shodan_dns_page_limit: "4"
 shodan_host_enrichment_limit: "20"
 web_probe_timeout_seconds: "10"
