@@ -80,9 +80,11 @@ fi
 # Rate limit check
 HTTP_STATUS=$(echo "${SCAN_RESPONSE}" | jq -r '.status // empty')
 ERR_CODE=$(echo "${SCAN_RESPONSE}" | jq -r '.result.errors[0].code // empty')
+ERR_MESSAGE=$(echo "${SCAN_RESPONSE}" | jq -r '.result.errors[0].message // .errors[0].message // empty')
 
-if [ "$HTTP_STATUS" == "429" ] || [ "$ERR_CODE" == "1015" ]; then
-    echo "[!] Cloudflare API Rate Limit Reached (429/1015)." >&2
+if [ "$HTTP_STATUS" == "429" ] || [ "$ERR_CODE" == "1015" ] || [[ "${ERR_MESSAGE,,}" == *"rate limit"* ]]; then
+    echo "[!] Cloudflare API rate limit reached for $URL (status=${HTTP_STATUS:-n/a}, code=${ERR_CODE:-n/a})." >&2
+    echo "[*] Falling back to local screenshot tooling for this target." >&2
     exit 42
 fi
 
@@ -184,6 +186,7 @@ if [ -s "${OUTPUT_FILE}" ]; then
     else
         if [ "$QUIET" = false ]; then
             echo "[+] Screenshot saved successfully: ${OUTPUT_FILE}"
+            echo "[+] Cloudflare screenshot captured for $URL"
         fi
     fi
 else
