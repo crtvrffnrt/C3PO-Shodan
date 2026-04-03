@@ -1,6 +1,6 @@
 <div align="center">
 
-# C3PO-shodan
+# C3PO-shodan EASM checker
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Bash](https://img.shields.io/badge/shell-bash-orange.svg)](https://www.gnu.org/software/bash/)
