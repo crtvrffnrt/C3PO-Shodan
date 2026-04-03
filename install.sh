@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors for better UX
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -47,7 +49,27 @@ if [ -z "${SHODANAPI:-}" ] && [ ! -f "$SHODAN_KEY_FILE" ]; then
     fi
 fi
 
-# 5. Check for Gemini CLI authentication
+# 5. Check for Cloudflare API Credentials (Optional)
+echo -e "${GREEN}[*] Checking for Cloudflare API credentials...${NC}"
+CF_ENV_FILE="$PROJECT_ROOT/.env"
+if [ -z "${CF_ACCOUNT_ID:-}" ] || [ -z "${CF_API_TOKEN:-}" ]; then
+    if [ -f "$CF_ENV_FILE" ]; then
+        source "$CF_ENV_FILE" || true
+    fi
+fi
+
+if [ -z "${CF_ACCOUNT_ID:-}" ] || [ -z "${CF_API_TOKEN:-}" ]; then
+    echo -e "${YELLOW}[!] Cloudflare credentials missing in environment and .env file.${NC}"
+    echo -e "${YELLOW}[i] To enable high-fidelity screenshots and URL scanning, add the following to your .env file:${NC}"
+    echo -e "    CF_ACCOUNT_ID=your_account_id"
+    echo -e "    CF_API_TOKEN=your_api_token"
+    echo -e "${YELLOW}[i] Refer to the documentation for instructions on obtaining these.${NC}"
+    echo -e "${YELLOW}[i] Falling back to local screenshot tools (chromium/wkhtmltoimage).${NC}"
+else
+    echo -e "${GREEN}[+] Cloudflare credentials found. Cloudflare URL Scanner will be used as the primary screenshot source.${NC}"
+fi
+
+# 6. Check for Gemini CLI authentication
 echo -e "${GREEN}[*] Checking Gemini CLI authentication...${NC}"
 if ! gemini -p "ping" -o text >/dev/null 2>&1; then
     echo -e "${RED}[!] Gemini CLI is not authenticated or not installed correctly.${NC}"

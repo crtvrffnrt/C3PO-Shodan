@@ -39,7 +39,8 @@ Install these first:
 - `curl`
 - `nuclei`
 - `gemini` CLI
-- One screenshot tool if you want captures: `chromium`, `google-chrome`, `microsoft-edge`, or `wkhtmltoimage`
+- One screenshot tool if you want captures (fallback): `chromium`, `google-chrome`, `microsoft-edge`, or `wkhtmltoimage`
+- **Optional (Recommended):** Cloudflare API credentials for high-fidelity screenshots and URL scanning.
 
 Recommended Nuclei install:
 
@@ -63,17 +64,17 @@ If your environment expects the step anyway:
 python3 -m pip install -r requirements.txt
 ```
 
-### 3. Configure Shodan
+### 3. Configure API Credentials
 
-Set your API key with either an environment variable or a local file.
+Set your API keys with either environment variables or a local `.env` file because `scripts/common.sh` loads it automatically.
 
-Environment variable:
+#### Shodan
 
 ```bash
-export SHODANAPI="your_shodan_api_key"
+printf 'SHODANAPI=%s\n' "your_shodan_api_key" >> .env
 ```
 
-Or local key file:
+Alternatively, use a local key file:
 
 ```bash
 mkdir -p ~/.shodan
@@ -81,11 +82,16 @@ printf '%s\n' "your_shodan_api_key" > ~/.shodan/api_key
 chmod 600 ~/.shodan/api_key
 ```
 
-You can also keep the key in a local `.env` file because `scripts/common.sh` loads it automatically:
+#### Cloudflare (Optional - for high-fidelity screenshots)
+
+To enable the Cloudflare URL Scanner as the primary source for screenshots and security intelligence, add your credentials to the `.env` file:
 
 ```bash
-printf 'SHODANAPI=%s\n' "your_shodan_api_key" > .env
+printf 'CF_ACCOUNT_ID=%s\n' "your_account_id" >> .env
+printf 'CF_API_TOKEN=%s\n' "your_api_token" >> .env
 ```
+
+If these credentials are missing, the pipeline will automatically fall back to local screenshot tools (Chromium, wkhtmltoimage, etc.).
 
 ### 4. Authenticate Gemini CLI
 

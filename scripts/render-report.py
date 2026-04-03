@@ -56,6 +56,8 @@ def join_list(items: list, empty: str = "none") -> str:
 
 def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
     screenshot_html = ""
+    cf_intel_html = ""
+    
     if screenshot_entry and screenshot_entry.get("status") == "captured":
         image = inline_image(screenshot_entry.get("path", ""))
         if image:
@@ -64,6 +66,21 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
                 f'<img class="shot" src="{image}" alt="Screenshot of {escape(host.get("hostname", ""))}">'
                 "</div>"
             )
+        
+        # Add Cloudflare specific intelligence to the card if available
+        cf_info = screenshot_entry.get("cloudflare_info", {})
+        if cf_info:
+            tech_stack = ", ".join(cf_info.get("tech_stack", [])) or "n/a"
+            cf_intel_html = f"""
+            <div class="cf-intel-mini">
+              <span class="meta-label">Cloudflare Intelligence</span>
+              <div class="kv-grid mini">
+                <div class="kv"><span class="meta-label">Server</span><strong class="mono small">{escape(cf_info.get("server", "n/a"))}</strong></div>
+                <div class="kv"><span class="meta-label">TLS</span><strong class="mono small">{escape(cf_info.get("tls_protocol", "n/a"))} ({escape(cf_info.get("security_state", "n/a"))})</strong></div>
+              </div>
+              <div class="kv"><span class="meta-label">Tech Stack</span><strong class="small">{escape(tech_stack)}</strong></div>
+            </div>
+            """
     
     services = "".join(
         f'<span class="pill port">{escape(str(port))}</span>'
@@ -105,6 +122,7 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
           <ul>{factors or '<li>Baseline risk detected.</li>'}</ul>
         </div>
 
+        {cf_intel_html}
         {screenshot_html}
       </article>
     """
@@ -117,6 +135,34 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     ip_assets = payload.get("ips", [])
     discoveries = payload.get("discoveries", {})
     screenshots = screenshot_map(manifest)
+
+    # Cloudflare Intelligence Summary
+    cf_entries = [e for e in manifest.get("entries", []) if e.get("cloudflare_info")]
+    cf_intel_rows = ""
+    if cf_entries:
+        for e in cf_entries:
+            info = e["cloudflare_info"]
+            techs = ", ".join(info.get("tech_stack", [])) or "n/a"
+            cf_intel_rows += f"""
+            <tr>
+              <td class="mono small">{escape(e.get('hostname', ''))}</td>
+              <td class="small">{escape(info.get('server', 'n/a'))}</td>
+              <td class="mono small">{escape(info.get('tls_protocol', 'n/a'))}</td>
+              <td class="small"><span class="badge">{escape(info.get('security_state', 'n/a'))}</span></td>
+              <td class="small">{escape(techs)}</td>
+              <td class="mono small">{escape(info.get('ip', 'n/a'))} ({escape(info.get('country', 'n/a'))})</td>
+            </tr>
+            """
+    else:
+        cf_intel_rows = """
+        <tr>
+          <td colspan="6" class="muted">
+            <strong>N/A: No Cloudflare Intelligence available.</strong><br>
+            Cloudflare API credentials (ACCOUNT_ID, TOKEN) were not provided during this session.<br>
+            Please refer to the <a href="docs/workflows/collection/GEMINI.md" style="color:var(--accent); text-decoration:underline;">Collection Documentation</a> to enable high-fidelity scanning.
+          </td>
+        </tr>
+        """
 
     # Nuclei Summary Metrics
     nuclei_critical = sum(1 for r in nuclei_results if r.get("info", {}).get("severity") == "critical")
@@ -381,9 +427,17 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       border: 1px solid var(--line);
     }}
     .kv-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }}
+    .kv-grid.mini {{ gap: 8px; margin-bottom: 8px; }}
     .kv strong {{ font-size: 0.85rem; word-break: break-all; color: var(--text-soft); }}
     .risk-factors ul {{ margin: 0; padding-left: 18px; font-size: 0.85rem; color: var(--text-muted); }}
     .risk-factors li + li {{ margin-top: 4px; }}
+    .cf-intel-mini {{ 
+      margin: 16px 0; 
+      padding: 12px; 
+      background: #f8f9fa; 
+      border: 1px solid var(--line); 
+      border-radius: 12px; 
+    }}
     .shot-wrap {{ margin-top: 16px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }}
     .shot {{ width: 100%; display: block; }}
     .mono {{ font-family: "IBM Plex Mono", monospace; }}
@@ -404,9 +458,10 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         <nav>
           <a href="#summary">1. Executive Summary</a>
           <a href="#nuclei">2. Nuclei Scan Findings</a>
-          <a href="#targets">3. Exposure Targets</a>
-          <a href="#intelligence">4. DNS Intelligence</a>
-          <a href="#inventory">5. Infrastructure Inventory</a>
+          <a href="#cloudflare">3. Cloudflare Intelligence</a>
+          <a href="#targets">4. Exposure Targets</a>
+          <a href="#intelligence">5. DNS Intelligence</a>
+          <a href="#inventory">6. Infrastructure Inventory</a>
         </nav>
       </section>
 
@@ -477,8 +532,30 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
             </table>
           </section>
 
+          <section id="cloudflare" class="paper-section">
+            <h2>3. Cloudflare URL Scan Intelligence</h2>
+            <p>High-fidelity URL scanning and security metadata provided by Cloudflare's analysis engine.</p>
+            <div style="overflow-x: auto;">
+              <table class="evidence-table">
+                <thead>
+                  <tr>
+                    <th>Target Host</th>
+                    <th>Server</th>
+                    <th>TLS</th>
+                    <th>Security</th>
+                    <th>Tech Stack</th>
+                    <th>Edge IP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cf_intel_rows}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section id="targets" class="paper-section">
-            <h2>3. Top Exposure Targets</h2>
+            <h2>4. Top Exposure Targets</h2>
             <p>Detailed analysis of high-priority assets based on service composition, known vulnerabilities, and risk scoring.</p>
             <div class="grid-two">
               {host_cards}
@@ -486,7 +563,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
           </section>
 
           <section id="intelligence" class="paper-section">
-            <h2>4. Takeover & DNS Intelligence</h2>
+            <h2>5. Takeover & DNS Intelligence</h2>
             <div class="grid-two">
               {takeover_html}
               {txt_html}
@@ -494,7 +571,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
           </section>
 
           <section id="inventory" class="paper-section">
-            <h2>5. Infrastructure Inventory</h2>
+            <h2>6. Infrastructure Inventory</h2>
             <p>Condensed view of discovered IP infrastructure and network groupings.</p>
             <div style="overflow-x: auto;">
               <table class="evidence-table">
