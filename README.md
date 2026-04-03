@@ -167,3 +167,7 @@ The generated reports provide a comprehensive, interactive view of the discovere
   </div>
 </div>
 
+## Sample Report
+
+You can view a sample of the generated output here: [attack_surface_latest.html](attack_surface_latest.html)
+
