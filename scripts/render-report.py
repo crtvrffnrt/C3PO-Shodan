@@ -8,6 +8,36 @@ from datetime import datetime
 from html import escape
 from typing import Optional
 
+RISKY_PORTS = {
+    21: "FTP: Cleartext authentication and data transfer. High risk of credential sniffing and unauthorized file access.",
+    22: "SSH: Secure Shell. While secure, public exposure invites brute-force attacks and represents a critical entry point.",
+    23: "Telnet: Cleartext protocol. Extremely vulnerable to sniffing. Should never be public-facing.",
+    25: "SMTP: Mail transfer. Can be abused for mail relaying, spamming, or fingerprinting internal mail infrastructure.",
+    53: "DNS: Potential for DNS amplification attacks or zone transfers if misconfigured.",
+    80: "HTTP: Unencrypted web traffic. Susceptible to MITM and session hijacking.",
+    110: "POP3: Cleartext mail retrieval. Credentials and emails can be easily intercepted.",
+    111: "RPCBind: Often used for port mapping in older Unix services. High risk of information disclosure.",
+    135: "RPC: Windows RPC. Frequently targeted for remote code execution and service discovery.",
+    137: "NetBIOS: Windows naming service. Discloses internal network information and hostnames.",
+    139: "NetBIOS: Windows file sharing. High risk of unauthorized data access and worm propagation.",
+    143: "IMAP: Cleartext mail access. Sensitive communications and credentials at risk.",
+    161: "SNMP: Network management. If community strings are weak, provides deep visibility into infrastructure.",
+    389: "LDAP: Directory access. Risk of sensitive user and organizational data exposure.",
+    445: "SMB: Windows file sharing. Target for EternalBlue and similar critical exploits. Should NEVER be public.",
+    548: "AFP: Apple Filing Protocol. Potential for unauthorized file access.",
+    1433: "MSSQL: Database access. Target for brute-force and SQL injection. High impact if compromised.",
+    1521: "Oracle: Database access. Similar risks to MSSQL; critical organizational data exposure.",
+    2049: "NFS: Network File System. Risk of unauthorized file system mounting and data theft.",
+    3306: "MySQL: Database access. High risk of credential theft and data breach.",
+    3389: "RDP: Remote Desktop. Critical entry point; target for BlueKeep and continuous brute-force.",
+    5432: "PostgreSQL: Database access. Similar risks to MySQL and MSSQL.",
+    5900: "VNC: Remote desktop. Often has weak or no authentication; high risk of full system control.",
+    6379: "Redis: In-memory store. Frequently has no password; critical for data exposure and RCE.",
+    8080: "HTTP-Alt: Often used for management interfaces (Tomcat, Jenkins) which may have weak defaults.",
+    9200: "Elasticsearch: High risk of full database indexing and data exfiltration if unauthenticated.",
+    27017: "MongoDB: NoSQL database. Historically targeted due to lack of default authentication.",
+}
+
 
 def risk_badge(level: str) -> str:
     return {
@@ -54,6 +84,40 @@ def join_list(items: list, empty: str = "none") -> str:
     return ", ".join(valid) if valid else empty
 
 
+def vulnerability_summary_rows(hosts: list[dict]) -> str:
+    all_vulns = []
+    for host in hosts:
+        details = host.get("vuln_details", {})
+        for cve_id, info in details.items():
+            all_vulns.append({
+                "cve": cve_id,
+                "cvss": info.get("cvss", 0.0),
+                "summary": info.get("summary", "No details available."),
+                "host": host.get("hostname", "n/a")
+            })
+    
+    # Sort by CVSS score descending
+    all_vulns.sort(key=lambda x: x["cvss"], reverse=True)
+    
+    rows = ""
+    for v in all_vulns[:20]: # Show top 20
+        cvss_val = v["cvss"]
+        badge_class = "low"
+        if cvss_val >= 9.0: badge_class = "critical"
+        elif cvss_val >= 7.0: badge_class = "high"
+        elif cvss_val >= 4.0: badge_class = "medium"
+        
+        rows += f"""
+        <tr>
+          <td class="mono small"><strong>{escape(v['cve'])}</strong></td>
+          <td><span class="badge badge-{badge_class}">{escape(str(cvss_val))}</span></td>
+          <td class="mono small">{escape(v['host'])}</td>
+          <td class="small">{escape(v['summary'])}</td>
+        </tr>
+        """
+    return rows or '<tr><td colspan="4" class="muted">No infrastructure vulnerabilities identified.</td></tr>'
+
+
 def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
     screenshot_html = ""
     cf_intel_html = ""
@@ -82,20 +146,33 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
             </div>
             """
     
-    services = "".join(
-        f'<span class="pill port">{escape(str(port))}</span>'
-        for port in host.get("ports", [])[:8]
-    )
+    # Risky Port Highlighting
+    services_list = []
+    for port in host.get("ports", []):
+        port_int = int(port)
+        if port_int in RISKY_PORTS:
+            risk_text = RISKY_PORTS[port_int]
+            color_class = "danger" if port_int in (21, 23, 135, 139, 445, 3389, 6379, 9200) else "warn"
+            services_list.append(f'<span class="pill port {color_class}" title="{escape(risk_text)}">{escape(str(port))}</span>')
+        else:
+            services_list.append(f'<span class="pill port">{escape(str(port))}</span>')
     
+    services = "".join(services_list[:12])
+    
+    # Red flagged CVE mini cards
     vulns = "".join(
-        f'<span class="pill vuln">{escape(str(v))}</span>'
-        for v in host.get("vulns", [])[:8]
+        f'<span class="pill vuln" title="{escape(host.get("vuln_details", {}).get(v, {}).get("summary", "No details available."))}\nCVSS: {host.get("vuln_details", {}).get(v, {}).get("cvss", "n/a")}">{escape(str(v))}</span>'
+        for v in host.get("vulns", [])[:12]
     )
 
     factors = "".join(f"<li>{escape(factor)}</li>" for factor in host.get("risk_factors", [])[:5])
     
     ips = host.get("current_ips", [])
     primary_ip = ips[0] if ips else "n/a"
+    
+    # Shodan Metadata
+    sh_domains = ", ".join(host.get("shodan_domains", [])) or "n/a"
+    sh_hostnames = ", ".join(host.get("shodan_hostnames", [])) or "n/a"
 
     return f"""
       <article class="host-card">
@@ -112,10 +189,13 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
         
         <div class="kv-grid">
           <div class="kv"><span class="meta-label">Primary IP</span><strong class="mono">{escape(primary_ip)}</strong></div>
-          <div class="kv"><span class="meta-label">HTTP URL</span><strong class="mono">{escape(host.get("http", {}).get("url", "n/a"))}</strong></div>
+          <div class="kv"><span class="meta-label">Location (City)</span><strong class="small">{escape(host.get("city", "n/a"))}</strong></div>
+          <div class="kv" style="grid-column: span 2;"><span class="meta-label">Shodan Hostnames</span><strong class="small mono" style="display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="{escape(sh_hostnames)}">{escape(sh_hostnames)}</strong></div>
+          <div class="kv" style="grid-column: span 2;"><span class="meta-label">HTTP URL</span><strong class="mono small">{escape(host.get("http", {}).get("url", "n/a"))}</strong></div>
         </div>
 
-        <div class="pill-group">{services}{vulns}</div>
+        <div class="pill-group">{services}</div>
+        <div class="vuln-grid">{vulns}</div>
 
         <div class="risk-factors">
           <span class="meta-label">Risk Profile</span>
@@ -271,7 +351,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       min-height: 100vh;
       background: linear-gradient(180deg, #f7f8fa 0%, #eef1f4 100%);
       color: var(--text);
-      font: 400 14px/1.68 "Manrope", sans-serif;
+      font: 400 16px/1.68 "Manrope", sans-serif;
     }}
     a {{ color: inherit; }}
     .viewer-shell {{
@@ -388,16 +468,35 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       align-items: center;
       padding: 3px 8px;
       border-radius: 6px;
-      font-size: 0.65rem;
+      font-size: 0.68rem;
       font-family: "IBM Plex Mono", monospace;
       border: 1px solid var(--line);
       background: #fff;
+      line-height: 1;
     }}
-    .pill.port {{ color: var(--ok); border-color: #ceead6; background: #e6f4ea; }}
-    .pill.vuln {{ color: var(--danger); border-color: #fad2cf; background: #fce8e6; }}
+    .pill.port {{ color: var(--text-soft); border-color: var(--line); background: #ffffff; font-weight: 600; }}
+    .pill.port.danger {{ background: #fee2e2; color: #b91c1c; border-color: #fecaca; }}
+    .pill.port.warn {{ background: #ffedd5; color: #9a3412; border-color: #fed7aa; }}
+    .pill.vuln {{ 
+      color: #ffffff; 
+      border-color: #dc2626; 
+      background: #dc2626; 
+      font-weight: 600;
+      cursor: help;
+    }}
     .pill-group {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }}
+    .vuln-grid {{ 
+      display: flex; 
+      flex-wrap: wrap; 
+      gap: 4px; 
+      margin-bottom: 16px; 
+      padding: 10px; 
+      background: #fff5f5; 
+      border-radius: 12px; 
+      border: 1px solid #fee2e2;
+    }}
     
-    .evidence-table {{ width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; font-size: 0.85rem; }}
+    .evidence-table {{ width: 100%; border-collapse: collapse; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.85rem; }}
     .evidence-table th, .evidence-table td {{ text-align: left; vertical-align: middle; padding: 10px 14px; border-bottom: 1px solid var(--line); }}
     .evidence-table th {{ background: #f7f8fa; color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-family: "IBM Plex Mono", monospace; }}
     .evidence-table tr:last-child td {{ border-bottom: 0; }}
@@ -512,6 +611,24 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
             <h2>1. Executive Summary</h2>
             <p>The reconnaissance phase for <strong>{escape(target.get('core_domain', ''))}</strong> has concluded. The analysis identified {len(hosts)} primary high-interest targets from a total discovery pool of {summary.get("original_total_hosts", 0)} assets.</p>
             <p>Risk scoring indicates a {summary.get('critical_count', 0) > 0 and 'CRITICAL' or summary.get('high_count', 0) > 0 and 'HIGH' or 'BASELINE'} risk profile based on observed vulnerabilities and exposed management interfaces.</p>
+            
+            <div style="margin-top: 24px;">
+              <h3>Observed Infrastructure Vulnerabilities</h3>
+              <p class="small muted">Key vulnerabilities identified via Shodan host intelligence across the discovered infrastructure.</p>
+              <table class="evidence-table">
+                <thead>
+                  <tr>
+                    <th>CVE ID</th>
+                    <th>Score</th>
+                    <th>Affected Host</th>
+                    <th>Vulnerability Summary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vulnerability_summary_rows(hosts)}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           <section id="nuclei" class="paper-section">

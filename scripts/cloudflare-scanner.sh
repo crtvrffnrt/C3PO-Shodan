@@ -127,7 +127,8 @@ if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
 fi
 
 # --- Intelligence Extraction ---
-CLEAN_DOMAIN=$(echo "$DOMAIN" | sed -E 's/[^a-zA-Z0-9]+/_/g')
+# Extract hostname from URL for cleaner filenames
+CLEAN_DOMAIN=$(echo "$DOMAIN" | awk -F/ '{print $NF}' | sed -E 's/[^a-zA-Z0-9]+/_/g')
 INFO_FILE="$OUTPUT_DIR/cloudflare_${CLEAN_DOMAIN}.json"
 
 if [ "$QUIET" = false ]; then
