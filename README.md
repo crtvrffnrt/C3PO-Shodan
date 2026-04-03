@@ -30,7 +30,7 @@ The pipeline is deterministic. Gemini is for operator workflow and orchestration
 
 ## Prepare
 
-### 1. System dependencies
+### 1.System dependencies
 
 Install these first:
 
