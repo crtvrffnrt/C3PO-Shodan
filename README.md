@@ -145,28 +145,9 @@ Primary outputs:
 
 The generated reports provide a comprehensive, interactive view of the discovered attack surface. 
 
+</div>
+
 <div align="center">
-  <div style="border: 1px solid #d1d5da; border-radius: 8px; overflow: hidden; max-width: 1000px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
-    <div style="background-color: #f6f8fa; border-bottom: 1px solid #d1d5da; padding: 12px; display: flex; align-items: center;">
-      <div style="display: flex; gap: 8px; margin-right: 16px;">
-        <span style="width: 12px; height: 12px; border-radius: 50%; background-color: #ff5f56; display: inline-block;"></span>
-        <span style="width: 12px; height: 12px; border-radius: 50%; background-color: #ffbd2e; display: inline-block;"></span>
-        <span style="width: 12px; height: 12px; border-radius: 50%; background-color: #27c93f; display: inline-block;"></span>
-      </div>
-      <div style="background-color: white; border: 1px solid #e1e4e8; border-radius: 4px; padding: 4px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; flex-grow: 1; text-align: left; color: #586069; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-        attack_surface_latest.html (Dashboard)
-      </div>
-    </div>
-    <div style="background-color: white;">
-      <a href="attack_surface_latest.html" target="_blank">
-        <img src="attack_surface_latest.png" alt="Attack Surface Dashboard" width="100%">
-      </a>
-    </div>
-  </div>
-  <p style="margin-top: 16px;">
-    <a href="attack_surface_latest.html" style="font-weight: bold; color: #0366d6; text-decoration: none;">
-      🚀 Open Interactive EASM Dashboard
-    </a>
-  </p>
+  <img src="example.jpg" alt="Example Report" width="600">
 </div>
 
