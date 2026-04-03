@@ -58,11 +58,14 @@ if [ -z "${CF_ACCOUNT_ID:-}" ] || [ -z "${CF_API_TOKEN:-}" ]; then
     fi
 fi
 
-if [ -z "${CF_ACCOUNT_ID:-}" ] || [ -z "${CF_API_TOKEN:-}" ]; then
+if [ -z "${CF_ACCOUNT_ID:-}" ] || { [ -z "${CF_API_TOKEN:-}" ] && { [ -z "${CF_API_KEY:-}" ] || [ -z "${CF_EMAIL:-}" ]; }; }; then
     echo -e "${YELLOW}[!] Cloudflare credentials missing in environment and .env file.${NC}"
     echo -e "${YELLOW}[i] To enable high-fidelity screenshots and URL scanning, add the following to your .env file:${NC}"
     echo -e "    CF_ACCOUNT_ID=your_account_id"
     echo -e "    CF_API_TOKEN=your_api_token"
+    echo -e "    or"
+    echo -e "    CF_EMAIL=your_cloudflare_email"
+    echo -e "    CF_API_KEY=your_global_api_key"
     echo -e "${YELLOW}[i] Refer to the documentation for instructions on obtaining these.${NC}"
     echo -e "${YELLOW}[i] Falling back to local screenshot tools (chromium/wkhtmltoimage).${NC}"
 else

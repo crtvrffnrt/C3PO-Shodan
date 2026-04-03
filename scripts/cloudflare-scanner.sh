@@ -8,6 +8,8 @@ set -euo pipefail
 # Prioritize environment variables from the project environment
 CF_ACCOUNT_ID="${CF_ACCOUNT_ID:-}"
 CF_API_TOKEN="${CF_API_TOKEN:-}"
+CF_API_KEY="${CF_API_KEY:-}"
+CF_EMAIL="${CF_EMAIL:-}"
 DEBUG=false
 DOMAIN=""
 OUTPUT_DIR="."
@@ -45,8 +47,14 @@ if [ -z "$DOMAIN" ]; then
     usage
 fi
 
-if [ -z "$CF_ACCOUNT_ID" ] || [ -z "$CF_API_TOKEN" ]; then
-    echo "[!] Cloudflare API credentials (CF_ACCOUNT_ID, CF_API_TOKEN) are missing." >&2
+AUTH_MODE=""
+if [ -n "$CF_ACCOUNT_ID" ] && [ -n "$CF_API_TOKEN" ]; then
+    AUTH_MODE="bearer"
+elif [ -n "$CF_ACCOUNT_ID" ] && [ -n "$CF_API_KEY" ] && [ -n "$CF_EMAIL" ]; then
+    AUTH_MODE="legacy"
+else
+    echo "[!] Cloudflare API credentials are missing." >&2
+    echo "[!] Set CF_ACCOUNT_ID plus CF_API_TOKEN, or CF_ACCOUNT_ID plus CF_API_KEY and CF_EMAIL." >&2
     exit 1
 fi
 
@@ -61,26 +69,52 @@ fi
 
 [ "$DEBUG" = true ] && echo "[DEBUG] Target URL: $URL"
 [ "$DEBUG" = true ] && echo "[DEBUG] Using Account ID: $CF_ACCOUNT_ID"
+[ "$DEBUG" = true ] && echo "[DEBUG] Auth mode: $AUTH_MODE"
 
 if [ "$QUIET" = false ]; then
     echo "[*] Initiating scan for $URL..."
 fi
 
+tmp_body="$(mktemp)"
+tmp_meta="$(mktemp)"
+trap 'rm -f "$tmp_body" "$tmp_meta"' EXIT
+
+curl_args=(
+  -sS -X POST "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/scan"
+  -H "Content-Type: application/json"
+  --data "{\"url\":\"${URL}\",\"visibility\":\"unlisted\"}"
+  -o "$tmp_body"
+  -w "%{http_code}"
+)
+if [ "$AUTH_MODE" = "bearer" ]; then
+    curl_args+=(-H "Authorization: Bearer ${CF_API_TOKEN}")
+else
+    curl_args+=(-H "X-Auth-Email: ${CF_EMAIL}" -H "X-Auth-Key: ${CF_API_KEY}")
+fi
+
 # Submit scan
-SCAN_RESPONSE=$(curl -sS -X POST "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/scan" \
-  -H "Authorization: Bearer ${CF_API_TOKEN}" \
-  -H "Content-Type: application/json" \
-  --data "{\"url\":\"${URL}\",\"visibility\":\"unlisted\"}")
+HTTP_CODE=$(curl "${curl_args[@]}" || true)
+SCAN_RESPONSE="$(cat "$tmp_body")"
 
 if [ "$DEBUG" = true ]; then
     echo "[DEBUG] Submit Response:"
     echo "$SCAN_RESPONSE" | jq .
 fi
 
-# Rate limit check
-HTTP_STATUS=$(echo "${SCAN_RESPONSE}" | jq -r '.status // empty')
-ERR_CODE=$(echo "${SCAN_RESPONSE}" | jq -r '.result.errors[0].code // empty')
-ERR_MESSAGE=$(echo "${SCAN_RESPONSE}" | jq -r '.result.errors[0].message // .errors[0].message // empty')
+HTTP_STATUS="$HTTP_CODE"
+ERR_CODE=$(echo "${SCAN_RESPONSE}" | jq -r '.errors[0].code // .result.errors[0].code // empty' 2>/dev/null || true)
+ERR_MESSAGE=$(echo "${SCAN_RESPONSE}" | jq -r '.errors[0].message // .result.errors[0].message // empty' 2>/dev/null || true)
+ERR_HINT="${ERR_MESSAGE,,}"
+
+if [[ "$HTTP_STATUS" =~ ^2 ]] && ! echo "$SCAN_RESPONSE" | jq -e '.success == true' >/dev/null 2>&1; then
+    ERR_MESSAGE="${ERR_MESSAGE:-Cloudflare returned a non-success response}"
+fi
+
+if [ "$HTTP_STATUS" = "401" ] || [ "$HTTP_STATUS" = "403" ] || [[ "$ERR_HINT" == *"authentication"* ]] || [[ "$ERR_HINT" == *"unauthorized"* ]] || [[ "$ERR_HINT" == *"forbidden"* ]] || [[ "$ERR_HINT" == *"invalid api token"* ]]; then
+    echo "[!] Cloudflare authentication failed for $URL (status=${HTTP_STATUS:-n/a}, code=${ERR_CODE:-n/a})." >&2
+    echo "[!] Check CF_ACCOUNT_ID and either CF_API_TOKEN or CF_API_KEY/CF_EMAIL." >&2
+    exit 43
+fi
 
 if [ "$HTTP_STATUS" == "429" ] || [ "$ERR_CODE" == "1015" ] || [[ "${ERR_MESSAGE,,}" == *"rate limit"* ]]; then
     echo "[!] Cloudflare API rate limit reached for $URL (status=${HTTP_STATUS:-n/a}, code=${ERR_CODE:-n/a})." >&2
@@ -107,8 +141,13 @@ MAX_RETRIES=60
 RETRY_COUNT=0
 STATUS="queued"
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    STATUS_RESPONSE=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/result/${SCAN_ID}" \
-      -H "Authorization: Bearer ${CF_API_TOKEN}")
+    if [ "$AUTH_MODE" = "bearer" ]; then
+        STATUS_RESPONSE=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/result/${SCAN_ID}" \
+          -H "Authorization: Bearer ${CF_API_TOKEN}")
+    else
+        STATUS_RESPONSE=$(curl -sS "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/result/${SCAN_ID}" \
+          -H "X-Auth-Email: ${CF_EMAIL}" -H "X-Auth-Key: ${CF_API_KEY}")
+    fi
     
     # Extract status
     STATUS=$(echo "$STATUS_RESPONSE" | jq -r '.task.status // .status // empty')
@@ -172,9 +211,15 @@ if [ "$QUIET" = false ]; then
     echo "[*] Downloading screenshot to $OUTPUT_FILE..."
 fi
 
-curl -sS "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/screenshots/${SCAN_ID}.png" \
-  -H "Authorization: Bearer ${CF_API_TOKEN}" \
-  --output "${OUTPUT_FILE}"
+if [ "$AUTH_MODE" = "bearer" ]; then
+    curl -sS "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/screenshots/${SCAN_ID}.png" \
+      -H "Authorization: Bearer ${CF_API_TOKEN}" \
+      --output "${OUTPUT_FILE}"
+else
+    curl -sS "https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/urlscanner/v2/screenshots/${SCAN_ID}.png" \
+      -H "X-Auth-Email: ${CF_EMAIL}" -H "X-Auth-Key: ${CF_API_KEY}" \
+      --output "${OUTPUT_FILE}"
+fi
 
 # Reliability Check
 if [ -s "${OUTPUT_FILE}" ]; then
