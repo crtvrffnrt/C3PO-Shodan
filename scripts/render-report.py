@@ -98,6 +98,41 @@ def risk_label(score: int, level: str) -> str:
     return f"{level_text} {score}"
 
 
+def risk_tone(level: str) -> str:
+    normalized = (level or "").lower()
+    if normalized in {"critical", "high"}:
+        return "risk"
+    if normalized == "medium":
+        return "medium"
+    return "neutral"
+
+
+def summary_tone(critical: int = 0, high: int = 0, medium: int = 0) -> str:
+    if critical or high:
+        return "risk"
+    if medium:
+        return "medium"
+    return "neutral"
+
+
+def split_metric_html(items: list[tuple[str, str, str]]) -> str:
+    return "".join(
+        f'<span class="metric-chip chip-{escape(tone)}"><span>{escape(label)}</span><strong>{escape(value)}</strong></span>'
+        for label, value, tone in items
+    )
+
+
+def render_metric_card(label: str, value: str, tone: str = "neutral", detail_html: str = "") -> str:
+    detail_block = f'<div class="metric-detail">{detail_html}</div>' if detail_html else ""
+    return (
+        f'<section class="metric-card metric-{escape(tone)}">'
+        f'<span class="meta-label">{escape(label)}</span>'
+        f'<div class="metric-main"><strong>{escape(value)}</strong></div>'
+        f"{detail_block}"
+        "</section>"
+    )
+
+
 def vulnerability_summary_rows(hosts: list[dict]) -> str:
     all_vulns = []
     for host in hosts:
@@ -275,18 +310,61 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     top_hosts = priority_hosts[:6]
     supporting_hosts = priority_hosts[6:12]
 
-    summary_cards = [
-        ("Discovered Assets", str(asset_total)),
-        ("Priority Targets", str(len(hosts))),
-        ("Web Exposures", str(web_count)),
-        ("Critical / High / Medium", f"{critical_count} / {high_count} / {medium_count}"),
-        ("Nuclei Findings", str(nuclei_total)),
-        ("Critical / High Nuclei", f"{nuclei_critical} / {nuclei_high}"),
-    ]
     summary_card_html = "".join(
-        f'<section class="summary-card"><span class="meta-label">{escape(label)}</span><strong>{escape(value)}</strong></section>'
-        for label, value in summary_cards
+        [
+            render_metric_card("Discovered Assets", str(asset_total)),
+            render_metric_card("Priority Targets", str(len(hosts))),
+            render_metric_card("Web Exposures", str(web_count)),
+            render_metric_card(
+                "Critical / High / Medium",
+                str(critical_count + high_count + medium_count),
+                summary_tone(critical_count, high_count, medium_count),
+                split_metric_html(
+                    [
+                        ("Critical", str(critical_count), "risk" if critical_count else "neutral"),
+                        ("High", str(high_count), "risk" if high_count else "neutral"),
+                        ("Medium", str(medium_count), "medium" if medium_count else "neutral"),
+                    ]
+                ),
+            ),
+            render_metric_card(
+                "Nuclei Findings",
+                str(nuclei_total),
+                summary_tone(nuclei_critical, nuclei_high, nuclei_med),
+                split_metric_html(
+                    [
+                        ("Critical", str(nuclei_critical), "risk" if nuclei_critical else "neutral"),
+                        ("High", str(nuclei_high), "risk" if nuclei_high else "neutral"),
+                        ("Medium", str(nuclei_med), "medium" if nuclei_med else "neutral"),
+                    ]
+                ) if nuclei_total else "",
+            ),
+            render_metric_card(
+                "Critical / High Nuclei",
+                str(nuclei_critical + nuclei_high),
+                summary_tone(nuclei_critical, nuclei_high, 0),
+                split_metric_html(
+                    [
+                        ("Critical", str(nuclei_critical), "risk" if nuclei_critical else "neutral"),
+                        ("High", str(nuclei_high), "risk" if nuclei_high else "neutral"),
+                    ]
+                ),
+            ),
+        ]
     )
+
+    nuclei_breakdown_html = (
+        '<div class="metric-grid">'
+        + "".join(
+            [
+                render_metric_card("Critical", str(nuclei_critical), "risk" if nuclei_critical else "neutral"),
+                render_metric_card("High", str(nuclei_high), "risk" if nuclei_high else "neutral"),
+                render_metric_card("Medium", str(nuclei_med), "medium" if nuclei_med else "neutral"),
+                render_metric_card("Total", str(nuclei_total), summary_tone(nuclei_critical, nuclei_high, nuclei_med)),
+            ]
+        )
+        + "</div>"
+    ) if nuclei_total else '<div class="callout compact-callout"><h3>No Nuclei Detections</h3><p class="small">No templates matched during this session, so the finding breakdown stays neutral.</p></div>'
 
     nuclei_rows = "".join(
         f"""
@@ -341,6 +419,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     supporting_cards = "".join(render_host_card(host, screenshots.get(host.get("hostname", ""))) for host in supporting_hosts)
 
     overall_state = "CRITICAL" if critical_count else "HIGH" if high_count else "MEDIUM" if medium_count else "BASELINE"
+    overall_badge_class = "critical" if critical_count else "high" if high_count else "medium" if medium_count else "low"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -366,11 +445,12 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       --radius-lg: 26px;
       --radius-md: 18px;
       --radius-sm: 12px;
-      --critical: #b42318;
-      --high: #c2410c;
-      --medium: #b7791f;
-      --low: #1f7a3d;
-      --accent: #234e70;
+      --risk-red-text: #b42318;
+      --risk-red-line: #f0c6c2;
+      --risk-red-bg: #fdf1f0;
+      --risk-orange-text: #9a6700;
+      --risk-orange-line: #f0ddb2;
+      --risk-orange-bg: #fff7eb;
     }}
     * {{ box-sizing: border-box; }}
     html {{ scroll-behavior: smooth; }}
@@ -420,13 +500,23 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     .sidebar h1 {{ margin: 0 0 14px; font-size: 1.5rem; }}
     .sidebar p {{ margin: 0; color: var(--text-soft); font-size: 0.9rem; }}
     .sidebar .muted {{ color: var(--text-muted); }}
-    .quick-facts {{ margin-top: 16px; display: grid; gap: 12px; }}
-    .fact, .summary-card {{
-      border: 1px solid var(--line);
-      border-radius: var(--radius-sm);
-      background: linear-gradient(180deg, #ffffff 0%, var(--paper-alt) 100%);
+    .quick-facts {{ margin-top: 16px; display: grid; gap: 8px; }}
+    .fact-row {{
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
     }}
-    .fact {{ padding: 12px 13px; }}
+    .fact-row:last-child {{ border-bottom: 0; padding-bottom: 0; }}
+    .fact-row .meta-label {{ margin-bottom: 0; }}
+    .fact-row .meta-value {{
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+      text-align: right;
+    }}
     .meta-label {{ display: block; font-size: 0.65rem; color: var(--text-muted); margin-bottom: 4px; }}
     .meta-value {{ font-size: 0.9rem; font-weight: 700; color: var(--text); }}
     .toc h2, .info-card h2, .researcher-card h2 {{ margin: 0 0 14px; font-size: 0.9rem; }}
@@ -455,10 +545,50 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     .cover-kicker {{ margin: 0 0 14px; font: 600 0.72rem/1 "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }}
     .paper h1 {{ margin: 0 0 16px; font-size: clamp(1.8rem, 4vw, 2.8rem); }}
     .lede {{ margin: 0; max-width: 860px; font-size: 1.05rem; color: var(--text-soft); }}
-    .cover-grid {{ margin-top: 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }}
-    .summary-card {{ padding: 16px 16px 15px; }}
-    .summary-card .meta-label {{ margin-bottom: 8px; }}
-    .summary-card strong {{ display: block; font-size: 1rem; line-height: 1.35; font-family: "IBM Plex Mono", monospace; }}
+    .metric-grid {{ margin-top: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }}
+    .metric-card {{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fcfdfe;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }}
+    .metric-main {{
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }}
+    .metric-main strong {{
+      display: block;
+      font-size: 1rem;
+      line-height: 1.2;
+      font-family: "IBM Plex Mono", monospace;
+      color: var(--text);
+    }}
+    .metric-detail {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .metric-chip {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text-muted);
+      font-size: 0.62rem;
+      line-height: 1;
+      font-family: "IBM Plex Mono", monospace;
+      text-transform: uppercase;
+    }}
+    .metric-chip strong {{ font-size: 0.72rem; color: inherit; }}
+    .metric-risk {{ border-color: var(--risk-red-line); background: var(--risk-red-bg); }}
+    .metric-medium {{ border-color: var(--risk-orange-line); background: var(--risk-orange-bg); }}
+    .chip-risk {{ border-color: var(--risk-red-line); background: var(--risk-red-bg); color: var(--risk-red-text); }}
+    .chip-medium {{ border-color: var(--risk-orange-line); background: var(--risk-orange-bg); color: var(--risk-orange-text); }}
+    .compact-callout {{ margin-top: 16px; }}
     .paper-section {{ padding-top: 30px; border-top: 1px solid var(--line); margin-top: 30px; }}
     .paper-section:first-of-type {{ border-top: 0; margin-top: 0; padding-top: 0; }}
     .paper h2 {{ margin: 0 0 16px; font-size: 1.4rem; text-transform: uppercase; letter-spacing: 0.05em; }}
@@ -495,20 +625,20 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       border: 1px solid var(--line);
       background: #fff;
     }}
-    .pill.port {{ color: var(--accent); border-color: #d7e4ef; background: #edf4f8; }}
-    .pill.port.danger {{ color: var(--critical); border-color: #f5c2c7; background: #fdecec; }}
-    .pill.port.warn {{ color: var(--high); border-color: #ffd8b5; background: #fff0e6; }}
-    .pill.vuln {{ color: var(--critical); border-color: #f5c2c7; background: #fdecec; }}
+    .pill.port {{ color: var(--text-soft); border-color: var(--line); background: #fff; }}
+    .pill.port.danger {{ color: var(--risk-red-text); border-color: var(--risk-red-line); background: var(--risk-red-bg); }}
+    .pill.port.warn {{ color: var(--risk-orange-text); border-color: var(--risk-orange-line); background: var(--risk-orange-bg); }}
+    .pill.vuln {{ color: var(--risk-red-text); border-color: var(--risk-red-line); background: var(--risk-red-bg); }}
     .pill-group {{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }}
     .badge-neutral {{ background: #eef2f6 !important; color: var(--text-soft) !important; border-color: var(--line) !important; }}
     .evidence-table {{ width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; font-size: 0.86rem; background: #fff; }}
     .evidence-table th, .evidence-table td {{ text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }}
     .evidence-table th {{ background: #f7f9fb; color: var(--text-muted); font-size: 0.65rem; text-transform: uppercase; font-family: "IBM Plex Mono", monospace; }}
     .evidence-table tr:last-child td {{ border-bottom: 0; }}
-    .badge-critical {{ background: #fdecec !important; color: var(--critical) !important; border-color: #f5c2c7 !important; }}
-    .badge-high {{ background: #fff0e6 !important; color: var(--high) !important; border-color: #ffd8b5 !important; }}
-    .badge-medium {{ background: #fff8e6 !important; color: var(--medium) !important; border-color: #f4df9f !important; }}
-    .badge-low {{ background: #edf8f0 !important; color: var(--low) !important; border-color: #cce8d6 !important; }}
+    .badge-critical {{ background: var(--risk-red-bg) !important; color: var(--risk-red-text) !important; border-color: var(--risk-red-line) !important; }}
+    .badge-high {{ background: var(--risk-red-bg) !important; color: var(--risk-red-text) !important; border-color: var(--risk-red-line) !important; }}
+    .badge-medium {{ background: var(--risk-orange-bg) !important; color: var(--risk-orange-text) !important; border-color: var(--risk-orange-line) !important; }}
+    .badge-low {{ background: #f7f9fb !important; color: var(--text-soft) !important; border-color: var(--line) !important; }}
     .host-card {{
       background: #ffffff;
       border: 1px solid var(--line);
@@ -566,7 +696,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     @media (max-width: 760px) {{
       .paper-inner {{ padding: 28px 18px 34px; }}
       .viewer-shell {{ width: min(100% - 16px, 1460px); padding-top: 16px; }}
-      .grid-two, .cover-grid, .host-metrics, .evidence-strip {{ grid-template-columns: 1fr; }}
+      .grid-two, .metric-grid, .host-metrics, .evidence-strip {{ grid-template-columns: 1fr; }}
       .host-head, .asset-footer {{ flex-direction: column; }}
     }}
   </style>
@@ -591,15 +721,19 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         <h1>{escape(target.get('core_domain', ''))}</h1>
         <p>Attack surface analysis report for the specified domain and its sub-infrastructure.</p>
         <div class="quick-facts">
-          <div class="fact">
+          <div class="fact-row">
             <span class="meta-label">Total Assets</span>
-            <div class="meta-value">{escape(str(asset_total))}</div>
+            <div class="meta-value mono">{escape(str(asset_total))}</div>
           </div>
-          <div class="fact">
+          <div class="fact-row">
             <span class="meta-label">Web Targets</span>
-            <div class="meta-value">{escape(str(web_count))}</div>
+            <div class="meta-value mono">{escape(str(web_count))}</div>
           </div>
-          <div class="fact">
+          <div class="fact-row">
+            <span class="meta-label">Exposure State</span>
+            <div class="meta-value"><span class="badge badge-{overall_badge_class}">{escape(overall_state)}</span></div>
+          </div>
+          <div class="fact-row">
             <span class="meta-label">Generated At</span>
             <div class="meta-value">{escape(human_date(target.get('generated_at', '')))}</div>
           </div>
@@ -623,7 +757,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
             <p class="cover-kicker">External Attack Surface Management Report</p>
             <h1>{escape(target.get('core_domain', ''))}</h1>
             <p class="lede">Comprehensive analysis of the external attack surface, structured to highlight priority exposure, supporting evidence, and the assets that merit the earliest analyst review.</p>
-            <div class="cover-grid">
+            <div class="metric-grid">
               {summary_card_html}
             </div>
           </header>
@@ -655,7 +789,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
           <section id="metrics" class="paper-section">
             <h2>2. Key Metrics</h2>
             <p>High-level summary for quick triage and prioritization.</p>
-            <div class="cover-grid">
+            <div class="metric-grid">
               {summary_card_html}
             </div>
           </section>
@@ -677,12 +811,7 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
               </tbody>
             </table>
             <h3 style="margin-top: 24px;">Nuclei Severity Breakdown</h3>
-            <div class="cover-grid">
-              <section class="summary-card"><span class="meta-label">Critical</span><strong>{nuclei_critical}</strong></section>
-              <section class="summary-card"><span class="meta-label">High</span><strong>{nuclei_high}</strong></section>
-              <section class="summary-card"><span class="meta-label">Medium</span><strong>{nuclei_med}</strong></section>
-              <section class="summary-card"><span class="meta-label">Total</span><strong>{nuclei_total}</strong></section>
-            </div>
+            {nuclei_breakdown_html}
           </section>
 
           <section id="targets" class="paper-section">
