@@ -142,3 +142,30 @@ Primary outputs:
 - Screenshot capture is optional and skipped automatically if no supported browser/image tool is installed.
 - The pipeline no longer creates a separate CISO summary text artifact.
 - If `nuclei` is missing, the rest of the Shodan collection and report pipeline can still complete, but vulnerability enrichment will be absent.
+
+## Example Report
+
+The generated reports provide a comprehensive, interactive view of the discovered attack surface. 
+
+<div align="center">
+  <div style="border: 1px solid #d1d5da; border-radius: 8px; overflow: hidden; max-width: 800px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+    <div style="background-color: #f6f8fa; border-bottom: 1px solid #d1d5da; padding: 12px; display: flex; align-items: center;">
+      <div style="display: flex; gap: 8px; margin-right: 16px;">
+        <span style="width: 12px; height: 12px; border-radius: 50%; background-color: #ff5f56; display: inline-block;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background-color: #ffbd2e; display: inline-block;"></span>
+        <span style="width: 12px; height: 12px; border-radius: 50%; background-color: #27c93f; display: inline-block;"></span>
+      </div>
+      <div style="background-color: white; border: 1px solid #e1e4e8; border-radius: 4px; padding: 4px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; flex-grow: 1; text-align: left; color: #586069; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        attack_surface_latest.html
+      </div>
+    </div>
+    <div style="padding: 60px 20px; background-color: white; text-align: center;">
+      <a href="attack_surface_latest.html">
+        <img src="logo.jpg" alt="Click to view Report" width="120" style="margin-bottom: 20px; opacity: 0.8;"><br>
+        <h3 style="margin: 0; color: #0366d6;">View Interactive Attack Surface Report</h3>
+        <p style="color: #586069; margin-top: 8px;">Click to open the latest generated EASM dashboard</p>
+      </a>
+    </div>
+  </div>
+</div>
+
