@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
-FLASH_MODEL = "gemini-3-flash-preview"
+FLASH_MODEL = "gemini-3.1-pro-preview"
 DEFAULT_TIMEOUT_SECONDS = 380
 
 
