@@ -77,6 +77,15 @@ if [ "$DEBUG" = true ]; then
     echo "$SCAN_RESPONSE" | jq .
 fi
 
+# Rate limit check
+HTTP_STATUS=$(echo "${SCAN_RESPONSE}" | jq -r '.status // empty')
+ERR_CODE=$(echo "${SCAN_RESPONSE}" | jq -r '.result.errors[0].code // empty')
+
+if [ "$HTTP_STATUS" == "429" ] || [ "$ERR_CODE" == "1015" ]; then
+    echo "[!] Cloudflare API Rate Limit Reached (429/1015)." >&2
+    exit 42
+fi
+
 # Extract UUID
 SCAN_ID=$(echo "${SCAN_RESPONSE}" | jq -r '.uuid // .result.tasks[0].uuid // empty')
 
