@@ -2,20 +2,19 @@
 
 # C3PO-shodan EASM Agent
 ---
-## Agentic framework for domain attack surface analysis leveraging Shodan, Nuclei, and Gemini CLI 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Bash](https://img.shields.io/badge/shell-bash-orange.svg)](https://www.gnu.org/software/bash/)
 [![Shodan](https://img.shields.io/badge/API-Shodan-red.svg)](https://www.shodan.io/)
 [![Nuclei](https://img.shields.io/badge/Scanner-Nuclei-teal.svg)](https://github.com/projectdiscovery/nuclei)
 [![Gemini CLI](https://img.shields.io/badge/CLI-Gemini-5b5bd6.svg)](https://github.com/google-gemini/gemini-cli)
-
+# --- 
 **A local Shodan and Nuclei attack-surface workflow intended to be driven from Gemini CLI.**
 </div>
 
 <div align="center">
   <img src="logo.jpg" alt="C3PO-shodan Logo" width="400">
 </div>
-
+## ---
 ## Overview
 
 `C3PO-shodan` maps a domain's exposed infrastructure with Shodan DNS and host telemetry, enriches the most relevant web targets with Nuclei, and renders the result into Markdown and HTML artifacts for operator review.
