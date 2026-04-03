@@ -8,6 +8,7 @@ cd "$PROJECT_ROOT"
 # Colors for better UX
 RED='\033[0;31m'
 GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # 1. Run installer/check script
@@ -32,6 +33,8 @@ DEBUG_MODE=false
 EXTRA_ARGS=()
 TARGET_INPUT=""
 RELATED_DOMAINS=()
+PHASE_RESULTS=()
+PHASE_INTERRUPT_REQUESTED=0
 
 # ... (omitted regex and validate_domain for brevity in thought, but I must provide full context in replace)
 
@@ -66,14 +69,208 @@ normalize_target_domain() {
     return 1
 }
 
+info() {
+    echo -e "${GREEN}[*] $*${NC}"
+}
+
+warn() {
+    echo -e "${YELLOW}[!] $*${NC}" >&2
+}
+
+error() {
+    echo -e "${RED}[!] $*${NC}" >&2
+}
+
+fatal() {
+    error "$*"
+    exit 1
+}
+
+record_phase_result() {
+    local phase_key="$1"
+    local outcome="$2"
+    local detail="$3"
+    PHASE_RESULTS+=("${phase_key}|${outcome}|${detail}")
+}
+
+print_phase_summary() {
+    local entry phase_key outcome detail
+    echo
+    info "Phase summary:"
+    for entry in "${PHASE_RESULTS[@]:-}"; do
+        IFS='|' read -r phase_key outcome detail <<< "$entry"
+        case "$outcome" in
+            ok) info "${phase_key}: completed (${detail})" ;;
+            skipped) warn "${phase_key}: skipped (${detail})" ;;
+            timeout) warn "${phase_key}: timed out (${detail})" ;;
+            failed) warn "${phase_key}: failed (${detail})" ;;
+            *) warn "${phase_key}: ${outcome} (${detail})" ;;
+        esac
+    done
+}
+
 run_with_timeout() {
     local timeout_value="$1"
     shift
     if command -v timeout >/dev/null 2>&1; then
-        timeout --preserve-status --kill-after=60s "$timeout_value" "$@"
+        timeout --kill-after=60s "$timeout_value" "$@"
     else
         "$@"
     fi
+}
+
+timeout_to_seconds() {
+    local raw="${1:-0}"
+    if [[ "$raw" =~ ^([0-9]+)h$ ]]; then
+        echo $(( BASH_REMATCH[1] * 3600 ))
+    elif [[ "$raw" =~ ^([0-9]+)m$ ]]; then
+        echo $(( BASH_REMATCH[1] * 60 ))
+    elif [[ "$raw" =~ ^([0-9]+)s$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+    elif [[ "$raw" =~ ^[0-9]+$ ]]; then
+        echo "$raw"
+    else
+        echo 0
+    fi
+}
+
+format_duration() {
+    local total_seconds="${1:-0}"
+    local hours=$(( total_seconds / 3600 ))
+    local minutes=$(( (total_seconds % 3600) / 60 ))
+    local seconds=$(( total_seconds % 60 ))
+    if [ "$hours" -gt 0 ]; then
+        printf '%02d:%02d:%02d' "$hours" "$minutes" "$seconds"
+    else
+        printf '%02d:%02d' "$minutes" "$seconds"
+    fi
+}
+
+render_progress_bar() {
+    local elapsed_seconds="$1"
+    local total_seconds="$2"
+    local width=24
+    local filled=0
+    local empty=0
+    local bar=""
+    local spinner='|/-\'
+    local spinner_index=$(( elapsed_seconds % 4 ))
+    local spinner_char="${spinner:spinner_index:1}"
+
+    if [ "$total_seconds" -gt 0 ]; then
+        filled=$(( elapsed_seconds * width / total_seconds ))
+        if [ "$filled" -gt "$width" ]; then
+            filled="$width"
+        fi
+    fi
+    empty=$(( width - filled ))
+
+    if [ "$filled" -gt 0 ]; then
+        printf -v bar '%*s' "$filled" ''
+        bar="${bar// /=}"
+    fi
+    if [ "$empty" -gt 0 ]; then
+        printf -v padding '%*s' "$empty" ''
+        bar+="${padding// /.}"
+    fi
+    if [ "$filled" -lt "$width" ]; then
+        local marker_pos="$filled"
+        if [ "$marker_pos" -lt 0 ]; then
+            marker_pos=0
+        fi
+        bar="${bar:0:marker_pos}${spinner_char}${bar:marker_pos+1}"
+    fi
+    printf '%s' "$bar"
+}
+
+show_phase_progress() {
+    local phase_key="$1"
+    local timeout_value="$2"
+    local target_pid="$3"
+    local started_at
+    local now
+    local elapsed
+    local timeout_seconds
+    local bar
+
+    timeout_seconds="$(timeout_to_seconds "$timeout_value")"
+    started_at="$(date +%s)"
+
+    while kill -0 "$target_pid" >/dev/null 2>&1; do
+        now="$(date +%s)"
+        elapsed=$(( now - started_at ))
+        bar="$(render_progress_bar "$elapsed" "$timeout_seconds")"
+        printf '\r[*] %s [%s] %s / %s' \
+            "$phase_key" \
+            "$bar" \
+            "$(format_duration "$elapsed")" \
+            "$(format_duration "$timeout_seconds")"
+        sleep 1
+    done
+    printf '\r%120s\r' ''
+}
+
+run_phase_command() {
+    local phase_key="$1"
+    local phase_title="$2"
+    local timeout_value="$3"
+    local quiet_mode="$4"
+    shift 4
+
+    local log_file="$LOG_DIR/${phase_key}_${TARGET_SLUG}_${REPORT_DATE}.log"
+    local status=0
+    local phase_pid=""
+
+    info "$phase_title"
+    info "Press Ctrl+C to skip this phase. Log: $log_file"
+    : > "$log_file"
+
+    PHASE_INTERRUPT_REQUESTED=0
+    trap 'PHASE_INTERRUPT_REQUESTED=1; if [ -n "${phase_pid:-}" ]; then kill -INT "${phase_pid}" >/dev/null 2>&1 || true; fi' INT
+
+    set +e
+    if [ "$DEBUG_MODE" = true ]; then
+        run_with_timeout "$timeout_value" "$@" 2>&1 | tee "$log_file"
+        status=${PIPESTATUS[0]}
+    else
+        run_with_timeout "$timeout_value" "$@" >"$log_file" 2>&1 &
+        phase_pid=$!
+        show_phase_progress "$phase_key" "$timeout_value" "$phase_pid"
+        wait "$phase_pid"
+        status=$?
+    fi
+    set -e
+
+    trap - INT
+
+    if [ "$PHASE_INTERRUPT_REQUESTED" -eq 1 ] || [ "$status" -eq 130 ]; then
+        warn "${phase_key} interrupted by user. Continuing to the next phase."
+        record_phase_result "$phase_key" "skipped" "user interrupt; log: $log_file"
+        PHASE_INTERRUPT_REQUESTED=0
+        return 130
+    fi
+
+    case "$status" in
+        0)
+            record_phase_result "$phase_key" "ok" "log: $log_file"
+            return 0
+            ;;
+        124)
+            warn "${phase_key} timed out after ${timeout_value}. Continuing."
+            record_phase_result "$phase_key" "timeout" "after ${timeout_value}; log: $log_file"
+            return 124
+            ;;
+        137|143)
+            warn "${phase_key} exceeded the timeout and was terminated. Continuing."
+            record_phase_result "$phase_key" "timeout" "terminated after timeout; log: $log_file"
+            return "$status"
+            ;;
+        *)
+            warn "${phase_key} failed with exit code ${status}. Continuing."
+            record_phase_result "$phase_key" "failed" "exit ${status}; log: $log_file"
+            return "$status"
+            ;;
+    esac
 }
 
 ensure_fallback_payload() {
@@ -185,15 +382,18 @@ fi
 if [ -z "${SHODANAPI:-}" ]; then
     SHODANAPI="$(resolve_shodan_key || echo "")"
     if [ -z "$SHODANAPI" ]; then
-        echo "[!] SHODANAPI environment variable not set and no Shodan config found." >&2
-        exit 1
+        fatal "SHODANAPI environment variable not set and no Shodan config found."
     fi
     export SHODANAPI
 fi
 
 # 0. Preflight
-./scripts/fetch-context.sh
-./scripts/validate.sh "$TARGET_DOMAIN"
+if ! ./scripts/fetch-context.sh; then
+    warn "Context refresh failed. Continuing with the local context file."
+fi
+if ! ./scripts/validate.sh "$TARGET_DOMAIN"; then
+    fatal "Validation failed. Fix the reported problem and rerun."
+fi
 
 REPORT_DATE="$(date +%Y-%m-%d)"
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -206,7 +406,6 @@ HTML_REPORT="$OUTPUT_DIR/attack_surface_${TARGET_SLUG}_${REPORT_DATE}.html"
 LATEST_HTML="$PROJECT_ROOT/attack_surface_latest.html"
 NUCLEI_OUTPUT="$OUTPUT_DIR/nuclei_${TARGET_SLUG}_${REPORT_DATE}.jsonl"
 
-echo "[*] Phase 1: Running modular discovery/triage pipeline for $TARGET_DOMAIN ..."
 PIPELINE_CMD=(
     python3 "$SCRIPTS_DIR/orchestrate.py"
     "$TARGET_DOMAIN"
@@ -218,23 +417,19 @@ PIPELINE_CMD=(
 for related_domain in "${RELATED_DOMAINS[@]}"; do
     PIPELINE_CMD+=(--related-domain "$related_domain")
 done
-# Increased timeout to 35m as requested
+PHASE1_QUIET=true
 if [ "$DEBUG_MODE" = true ]; then
-    if ! run_with_timeout 35m "${PIPELINE_CMD[@]}"; then
-        echo "[*] Phase 1 failed; continuing with fallback report data."
-    fi
-else
-    if ! run_with_timeout 35m "${PIPELINE_CMD[@]}" >/dev/null 2>&1; then
-        echo "[*] Phase 1 timed out or failed; continuing with fallback report data."
-    fi
+    PHASE1_QUIET=false
+fi
+if ! run_phase_command "phase1" "Phase 1: Running modular discovery/triage pipeline for $TARGET_DOMAIN ..." 35m "$PHASE1_QUIET" "${PIPELINE_CMD[@]}"; then
+    warn "Phase 1 did not complete cleanly; fallback report data will be used where needed."
 fi
 ensure_fallback_payload "$RAW_JSON" "$TARGET_DOMAIN"
 
 TXT_FINDINGS_JSON="$OUTPUT_DIR/txtfindings_${TARGET_SLUG}_${REPORT_DATE}.json"
-echo "[*] Phase 2: Enriching TXT DNS evidence ..."
-# Increased timeout to 35m
-if ! run_with_timeout 35m python3 "$SCRIPTS_DIR/txtfinder.py" --input "$RAW_JSON" --output "$TXT_FINDINGS_JSON"; then
-    echo "[*] TXT enrichment timed out or failed; continuing."
+if ! run_phase_command "phase2" "Phase 2: Enriching TXT DNS evidence ..." 35m false \
+    python3 "$SCRIPTS_DIR/txtfinder.py" --input "$RAW_JSON" --output "$TXT_FINDINGS_JSON"; then
+    warn "TXT enrichment did not complete cleanly; continuing with an empty TXT findings file."
     : > "$TXT_FINDINGS_JSON"
 fi
 
@@ -269,7 +464,6 @@ with open(raw_json, "w", encoding="utf-8") as handle:
     handle.write("\n")
 PY
 
-echo "[*] Phase 3: Running Nuclei on top 5 risky web targets ..."
 NUCLEI_TARGETS="$OUTPUT_DIR/targets_${TARGET_SLUG}.txt"
 python3 - "$RAW_JSON" "$NUCLEI_TARGETS" <<'PY'
 import json
@@ -293,7 +487,7 @@ for host in web_hosts:
         continue
     seen.add(url)
     targets.append(url)
-    if len(targets) == 5:
+    if len(targets) == 25:
         break
 
 with open(targets_path, "w", encoding="utf-8") as handle:
@@ -302,21 +496,22 @@ with open(targets_path, "w", encoding="utf-8") as handle:
 PY
 
 if [ -s "$NUCLEI_TARGETS" ]; then
-    # Increased timeout to 35m
-    if ! run_with_timeout 35m nuclei -l "$NUCLEI_TARGETS" \
-           -tags generic,tech,cve \
-           -severity critical,high,medium,low \
-           -jsonl \
-           -o "$NUCLEI_OUTPUT" \
-           -silent; then
-        echo "[*] Nuclei timed out or failed; continuing."
+    if ! run_phase_command "phase3" "Phase 3: Running Nuclei on top 25 risky web targets ..." 35m false \
+        nuclei -l "$NUCLEI_TARGETS" \
+            -tags misconfig,exposure,takeover,cve,tech,default-login \
+            -severity critical,high,medium \
+            -c 150 -bs 25 -rl 300 -timeout 5 \
+            -jsonl \
+            -o "$NUCLEI_OUTPUT" \
+            -silent; then
+        warn "Nuclei scan did not complete cleanly; continuing without additional findings."
     fi
 else
-    echo "[*] No reachable web targets found for Nuclei scan."
+    info "Phase 3: No reachable web targets found for Nuclei scan."
     : > "$NUCLEI_OUTPUT"
+    record_phase_result "phase3" "skipped" "no reachable web targets"
 fi
 
-echo "[*] Phase 4: Capturing screenshots where possible ..."
 if config_is_true "${SCREENSHOT_ENABLED:-true}"; then
     screenshot_cmd=(
         python3 "$SCRIPTS_DIR/capture-screenshots.py"
@@ -328,14 +523,17 @@ if config_is_true "${SCREENSHOT_ENABLED:-true}"; then
         --width "${SCREENSHOT_WIDTH:-1440}"
         --height "${SCREENSHOT_HEIGHT:-1024}"
     )
-    # Increased timeout to 35m
-    run_with_timeout 35m "${screenshot_cmd[@]}" >/dev/null 2>&1 || true
+    if ! run_phase_command "phase4" "Phase 4: Capturing screenshots where possible ..." 35m true "${screenshot_cmd[@]}"; then
+        warn "Screenshot capture did not complete cleanly; continuing with an empty manifest if needed."
+    fi
+else
+    info "Phase 4: Screenshot capture disabled by configuration."
+    record_phase_result "phase4" "skipped" "disabled by configuration"
 fi
 if [ ! -f "$SCREENSHOT_MANIFEST" ]; then
     printf '{\n  "generated_at": "%s",\n  "entries": []\n}\n' "$TIMESTAMP" > "$SCREENSHOT_MANIFEST"
 fi
 
-echo "[*] Phase 5: Rendering report ..."
 render_cmd=(
     python3 "$SCRIPTS_DIR/render-report.py"
     --input "$RAW_JSON"
@@ -346,17 +544,15 @@ render_cmd=(
 if [ -f "$NUCLEI_OUTPUT" ] && [ -s "$NUCLEI_OUTPUT" ]; then
     render_cmd+=(--nuclei "$NUCLEI_OUTPUT")
 fi
-# Increased timeout to 35m
-if ! run_with_timeout 35m "${render_cmd[@]}"; then
-    echo "[*] Report rendering timed out or failed; keeping fallback HTML."
+if ! run_phase_command "phase5" "Phase 5: Rendering report ..." 35m false "${render_cmd[@]}"; then
+    warn "Report rendering did not complete cleanly; keeping the fallback HTML output."
 fi
 
-echo "[*] Phase 6: Generating CISO summary ..."
-SUMMARY_TXT="$OUTPUT_DIR/ciso_summary_${TARGET_SLUG}_${REPORT_DATE}.txt"
-# Increased timeout to 35m
-run_with_timeout 35m python3 "$SCRIPTS_DIR/generate-summary.py" --input "$RAW_JSON" > "$SUMMARY_TXT" 2>/dev/null || true
-cp "$HTML_REPORT" "$LATEST_HTML"
+if ! cp "$HTML_REPORT" "$LATEST_HTML"; then
+    warn "Unable to update latest HTML shortcut at $LATEST_HTML."
+fi
+
+print_phase_summary
 
 echo -e "${GREEN}[*] Report JSON: $RAW_JSON${NC}"
 echo -e "${GREEN}[*] Report HTML: $HTML_REPORT${NC}"
-echo -e "${GREEN}[*] CISO Summary: $SUMMARY_TXT${NC}"

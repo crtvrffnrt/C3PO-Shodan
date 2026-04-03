@@ -49,7 +49,6 @@ class ReportPayload:
     root_domains: list[str]
     domains: list[DomainResult]
     summary: dict[str, Any]
-    management_summary: str = ""
     errors: list[str] = field(default_factory=list)
     artifacts: dict[str, Any] = field(default_factory=dict)
 
@@ -62,4 +61,3 @@ def to_builtin(value: Any) -> Any:
     if hasattr(value, "__dataclass_fields__"):
         return asdict(value)
     return value
-

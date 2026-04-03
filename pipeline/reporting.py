@@ -16,7 +16,6 @@ def inline_image(path: str) -> str:
 def render_html(payload: dict, reference_doc: str = "") -> str:
     domains = payload.get("domains", [])
     summary = payload.get("summary", {})
-    ciso = payload.get("management_summary", "")
     domain_sections = []
     for domain in domains:
         section = [
@@ -60,7 +59,7 @@ def render_html(payload: dict, reference_doc: str = "") -> str:
     * {{ box-sizing: border-box; }}
     body {{ margin:0; background: var(--bg); color: var(--text); font: 400 15px/1.6 Manrope, Arial, sans-serif; overflow-y: auto; }}
     .shell {{ max-width: 1440px; margin: 0 auto; padding: 24px; }}
-    .hero, .domain-card, .summary, .ciso {{ background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 20px; margin-bottom: 18px; }}
+    .hero, .domain-card, .summary {{ background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 20px; margin-bottom: 18px; }}
     h1,h2,h3 {{ margin: 0 0 12px; font-family: "Space Grotesk", sans-serif; }}
     .muted {{ color: var(--muted); }}
     .mono {{ font-family: "IBM Plex Mono", monospace; }}
@@ -83,10 +82,6 @@ def render_html(payload: dict, reference_doc: str = "") -> str:
       <p>Domains insgesamt: {summary.get("domain_count", 0)} | Assets: {summary.get("asset_count", 0)} | Deep Checks: {summary.get("deep_check_count", 0)}</p>
     </div>
     {''.join(domain_sections)}
-    <div class="ciso">
-      <h2>CISO-Zusammenfassung</h2>
-      <pre style="white-space: pre-wrap; margin:0;">{escape(ciso)}</pre>
-    </div>
   </div>
 </body>
 </html>"""

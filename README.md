@@ -1,124 +1,143 @@
 <div align="center">
 
-  # C3PO-shodan
+# C3PO-shodan
 
-  [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-  [![Bash](https://img.shields.io/badge/shell-bash-orange.svg)](https://www.gnu.org/software/bash/)
-  [![Shodan](https://img.shields.io/badge/API-Shodan-red.svg)](https://www.shodan.io/)
-  [![Gemini CLI](https://img.shields.io/badge/CLI-Gemini-purple.svg)](https://github.com/google/gemini-cli)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Bash](https://img.shields.io/badge/shell-bash-orange.svg)](https://www.gnu.org/software/bash/)
+[![Shodan](https://img.shields.io/badge/API-Shodan-red.svg)](https://www.shodan.io/)
+[![Nuclei](https://img.shields.io/badge/Scanner-Nuclei-teal.svg)](https://github.com/projectdiscovery/nuclei)
+[![Gemini CLI](https://img.shields.io/badge/CLI-Gemini-5b5bd6.svg)](https://github.com/google-gemini/gemini-cli)
 
-  **A Bash-orchestrated Shodan attack-surface workflow for deterministic infrastructure discovery. This is a really awesome Tool**
+**A local Shodan and Nuclei attack-surface workflow intended to be driven from Gemini CLI.**
 </div>
-  <div align="center">
+
+<div align="center">
   <img src="logo.jpg" alt="C3PO-shodan Logo" width="400">
 </div>
 
-##  🤖 Overview!
+## Overview
 
+`C3PO-shodan` maps a domain's exposed infrastructure with Shodan DNS and host telemetry, enriches the most relevant web targets with Nuclei, and renders the result into Markdown and HTML artifacts for operator review.
 
+The pipeline is deterministic. Gemini is for operator workflow and orchestration around the repo, not for generating a separate executive-summary artifact.
 
-**C3PO-shodan** is a powerful, deterministic pipeline designed to map a domain's external attack surface using Shodan DNS data and host telemetry. It mirrors the execution style of `C3PO-Osinter` but focuses strictly on infrastructure discovery, IP resolution, and risk scoring.
+## Workflow
 
-The tool generates both a versioned **Markdown report** and a self-contained **HTML operator dashboard**, providing actionable insights into exposed ports, vulnerable products, and potential subdomain takeover opportunities.
+- Shodan DNS discovery and host enrichment
+- TXT and takeover-oriented DNS signal collection
+- Nuclei execution against the top reachable web targets
+- Optional screenshot capture for reachable HTTP/S targets
+- Markdown and HTML report generation
 
----
+## Prepare
 
-## ✨ Features
+### 1. System dependencies
 
-- 🔍 **DNS Intelligence**: Collects subdomains and DNS records directly from Shodan.
-- 🌐 **Host Enrichment**: Pulls Shodan host data for discovered IPs (ports, products, vulnerabilities).
-- 🛡️ **Risk Scoring**: Automatically scores hosts based on exposure and historical risk.
-- 🚀 **Takeover Detection**: Highlights CNAME/provider patterns (inspired by `BountyHelperScripts`).
-- 📸 **Visual Recon**: Best-effort screenshots of live HTTP/S targets.
-- 📊 **Dual Reporting**: Generates clean Markdown for documentation and interactive HTML for analysis.
-- 🤖 **Gemini Integrated**: Built-in context (`GEMINI.md`) for AI-assisted workflow extensions.
+Install these first:
 
----
+- `python3` 3.10 or newer
+- `bash`
+- `curl`
+- `nuclei`
+- `gemini` CLI
+- One screenshot tool if you want captures: `chromium`, `google-chrome`, `microsoft-edge`, or `wkhtmltoimage`
 
-## 🛠️ Installation & Setup
+Recommended Nuclei install:
 
-### 1. Prerequisites
-Ensure you have the following installed:
-- **Python 3.10+**
-- **Node.js 20+** (for Gemini CLI)
-- **Bash** (Linux/macOS)
-
-### 2. Shodan API Configuration
-You need a Shodan API key. You can provide it in two ways:
-
-#### Option A: Environment Variable (Recommended)
-Add this to your `~/.bashrc` or `~/.zshrc`:
 ```bash
-export SHODANAPI="your_shodan_api_key_here"
+go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 ```
 
-#### Option B: .env File
-Copy the example and edit it:
-```bash
-cp .env.example .env
-# Add SHODANAPI=your_key to .env
-```
+Recommended Gemini CLI install:
 
-### 3. Gemini CLI Installation & Auth
-The Gemini CLI is used for AI-assisted analysis and workflow extensions.
-
-#### Install:
 ```bash
 npm install -g @google/gemini-cli
 ```
 
-#### Authenticate:
-1. Run the CLI:
-   ```bash
-   gemini
-   ```
-2. Select **"Sign in with Google"** when prompted.
-3. Complete the OAuth flow in your browser.
-4. Once authorized, return to the terminal.
+### 2. Python requirements
 
-### 4. Project Setup
+The Python code uses only the standard library. A minimal `requirements.txt` is included for automation compatibility.
+
+If your environment expects the step anyway:
+
 ```bash
-git clone https://github.com/your-org/c3po-shodan.git
-cd c3po-shodan
-chmod +x run.sh bin/run.sh scripts/*.sh
-./install.sh # If applicable, to setup python dependencies
+python3 -m pip install -r requirements.txt
 ```
 
----
+### 3. Configure Shodan
 
-## 🚀 Execution
+Set your API key with either an environment variable or a local file.
 
-Run the workflow from the project root:
+Environment variable:
+
+```bash
+export SHODANAPI="your_shodan_api_key"
+```
+
+Or local key file:
+
+```bash
+mkdir -p ~/.shodan
+printf '%s\n' "your_shodan_api_key" > ~/.shodan/api_key
+chmod 600 ~/.shodan/api_key
+```
+
+You can also keep the key in a local `.env` file because `scripts/common.sh` loads it automatically:
+
+```bash
+printf 'SHODANAPI=%s\n' "your_shodan_api_key" > .env
+```
+
+### 4. Authenticate Gemini CLI
+
+Authenticate once before using the repo through Gemini:
+
+```bash
+gemini
+```
+
+Complete the browser login flow, then return to the terminal.
+
+### 5. Refresh Nuclei templates
+
+```bash
+nuclei -update-templates
+```
+
+### 6. Clone and preflight
+
+```bash
+git clone <your-repo-url>
+cd c3po-shodan
+chmod +x run.sh bin/run.sh scripts/*.sh install.sh
+./install.sh
+```
+
+`install.sh` performs preflight checks for Python, Shodan, Nuclei, and Gemini.
+
+## Run
+
+Direct shell usage:
 
 ```bash
 ./run.sh example.com
 ```
 
-If no domain is provided, the script will prompt you interactively.
+Recommended Gemini-driven workflow from the repository root:
 
----
+```text
+Run ./run.sh against example.com, then help me inspect the HTML report and the Nuclei findings.
+```
 
-## 📁 Project Structure
+Primary outputs:
 
-- `run.sh`: Root entrypoint and wrapper.
-- `bin/run.sh`: Main orchestration logic.
-- `scripts/`: Collection and rendering modules (Python/Shell).
-- `config/`: YAML configurations and provider fragments.
-- `output/`: Final JSON artifacts and HTML dashboards.
-- `runtime/`: Temp reports, logs, and screenshots.
-- `docs/`: Technical documentation and style guides.
+- `output/attack_surface_<target>_<date>.json`
+- `output/attack_surface_<target>_<date>.html`
+- `runtime/reports/attack_surface_<target>_<date>.md`
+- `output/nuclei_<target>_<date>.jsonl`
 
----
+## Notes
 
-## 📝 Notes
-
-- **Screenshots**: Requires a headless browser (Chromium/Chrome/Edge) or `wkhtmltoimage`. If missing, the pipeline gracefully skips captures.
-- **Local-First**: Report generation is entirely deterministic and does not require active Gemini execution.
-- **Privacy**: No data is sent to external services other than the Shodan API.
-
----
-
-<div align="center">
-  <sub>Built with ❤️ by the C3PO-shodan Team</sub>
-</div>
+- Screenshot capture is optional and skipped automatically if no supported browser/image tool is installed.
+- The pipeline no longer creates a separate CISO summary text artifact.
+- If `nuclei` is missing, the rest of the Shodan collection and report pipeline can still complete, but vulnerability enrichment will be absent.
