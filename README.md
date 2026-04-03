@@ -7,7 +7,7 @@
 [![Shodan](https://img.shields.io/badge/API-Shodan-red.svg)](https://www.shodan.io/)
 [![Nuclei](https://img.shields.io/badge/Scanner-Nuclei-teal.svg)](https://github.com/projectdiscovery/nuclei)
 [![Gemini CLI](https://img.shields.io/badge/CLI-Gemini-5b5bd6.svg)](https://github.com/google-gemini/gemini-cli)
-# 
+# 1
 **A local Shodan and Nuclei attack-surface workflow intended to be driven from Gemini CLI.**
 </div>
 
