@@ -523,13 +523,14 @@ if config_is_true "${SCREENSHOT_ENABLED:-true}"; then
     fi
 
     if [ "$CF_SCANNER_ENABLED" = true ]; then
-        # Primary Cloudflare Scan Path
+        # Primary Cloudflare Scan Path with local fallback logic
         python3 - "$RAW_JSON" "$SCREENSHOT_MANIFEST" "$SCREENSHOT_DIR" "${MAX_SCREENSHOTS:-16}" "$CF_ACCOUNT_ID" "$CF_API_TOKEN" <<'PY'
 import json
 import os
 import subprocess
 import sys
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
@@ -551,6 +552,13 @@ entries = []
 
 os.makedirs(screenshot_dir, exist_ok=True)
 
+# Shared state for rate limiting and delay
+state = {
+    "rate_limited": False,
+    "last_scan_time": 0.0,
+    "lock": threading.Lock()
+}
+
 def scan_target(target):
     hostname = target.get("hostname")
     url = target.get("http", {}).get("url")
@@ -558,10 +566,19 @@ def scan_target(target):
     png_path = os.path.join(screenshot_dir, f"{clean_host}.png")
     json_path = os.path.join(screenshot_dir, f"cloudflare_{clean_host}.json")
     
-    # Simple delay to avoid burst rate limits
-    index = reachable.index(target)
-    if index > 0:
-        time.sleep(index * 5) # staggered start
+    with state["lock"]:
+        if state["rate_limited"]:
+            print(f" [!] Rate limit hit previously. Skipping Cloudflare for {hostname}...")
+            return None
+
+        # Ensure at least 11 seconds between scan submissions
+        now = time.time()
+        elapsed = now - state["last_scan_time"]
+        if elapsed < 11.0:
+            sleep_time = 11.0 - elapsed
+            time.sleep(sleep_time)
+        
+        state["last_scan_time"] = time.time()
 
     print(f"[*] Scanning {hostname} via Cloudflare...")
     
@@ -578,6 +595,13 @@ def scan_target(target):
     
     try:
         result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=600)
+        
+        if result.returncode == 42:
+            print(f" [!] Cloudflare rate limit detected for {hostname}. Switching to local tools for future targets.")
+            with state["lock"]:
+                state["rate_limited"] = True
+            return None
+
         if result.returncode == 0 and os.path.exists(png_path):
             cf_data = {}
             if os.path.exists(json_path):
@@ -612,20 +636,55 @@ def scan_target(target):
             "reason": str(e)
         }
 
+# Use max_workers=2 but the Lock handles the 11s interval
 with ThreadPoolExecutor(max_workers=2) as executor:
     results = list(executor.map(scan_target, targets))
-    entries.extend(results)
+    entries.extend([r for r in results if r is not None])
 
-# Fallback for failed or missing targets if needed
+# Fallback for failed or missing targets
 captured_hosts = {e["hostname"] for e in entries if e["status"] == "captured"}
 remaining_targets = [t for t in targets if t["hostname"] not in captured_hosts]
 
 if remaining_targets:
-    print(f"[*] Cloudflare scanner missed {len(remaining_targets)} targets.")
+    print(f"[*] Fallback: Capturing {len(remaining_targets)} targets using local tools...")
+    
+    # Create a temporary filtered JSON for the local scanner
+    filtered_payload = payload.copy()
+    filtered_payload["hosts"] = [h for h in hosts if h["hostname"] in {t["hostname"] for t in remaining_targets}]
+    
+    tmp_json = os.path.join(screenshot_dir, "fallback_targets.json")
+    tmp_manifest = os.path.join(screenshot_dir, "fallback_manifest.json")
+    
+    with open(tmp_json, "w") as f:
+        json.dump(filtered_payload, f)
+    
+    try:
+        # Call capture-screenshots.py
+        fallback_cmd = [
+            sys.executable,
+            os.path.join(os.getcwd(), "scripts/capture-screenshots.py"),
+            "--input", tmp_json,
+            "--output", tmp_manifest,
+            "--screenshot-dir", screenshot_dir,
+            "--max-screenshots", str(len(remaining_targets))
+        ]
+        subprocess.run(fallback_cmd, check=False)
+        
+        if os.path.exists(tmp_manifest):
+            with open(tmp_manifest, "r") as f:
+                fallback_data = json.load(f)
+                for entry in fallback_data.get("entries", []):
+                    entry["tool"] = "local-fallback"
+                    entries.append(entry)
+    except Exception as e:
+        print(f" [!] Local fallback failed: {str(e)}")
+    finally:
+        if os.path.exists(tmp_json): os.remove(tmp_json)
+        if os.path.exists(tmp_manifest): os.remove(tmp_manifest)
 
 manifest = {
     "generated_at": datetime.now(timezone.utc).isoformat(),
-    "tool": "cloudflare-parallel",
+    "tool": "cloudflare-with-local-fallback",
     "entries": entries
 }
 
