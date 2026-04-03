@@ -366,7 +366,28 @@ def run_domain_shodan_checks(
             if status == 200 and body:
                 data = json.loads(body)
                 ports = sorted(data.get("ports", []))
-                vulns = sorted(data.get("vulns", [])) if data.get("vulns") else []
+                
+                # Extract detailed vulnerability information
+                vulns_list = data.get("vulns", [])
+                vuln_details = {}
+                
+                # Check data entries for vulnerability details (summary, cvss)
+                for entry in data.get("data", []):
+                    entry_vulns = entry.get("vulns", {})
+                    if isinstance(entry_vulns, dict):
+                        for cve_id, info in entry_vulns.items():
+                            if cve_id not in vuln_details:
+                                vuln_details[cve_id] = {
+                                    "summary": info.get("summary", ""),
+                                    "cvss": info.get("cvss", info.get("cvss_v3", info.get("cvss_v2", 0.0))),
+                                    "verified": info.get("verified", False)
+                                }
+                
+                # Ensure all CVEs in 'vulns' list have at least a placeholder entry in details
+                for cve_id in vulns_list:
+                    if cve_id not in vuln_details:
+                        vuln_details[cve_id] = {"summary": "No details available.", "cvss": 0.0, "verified": False}
+
                 # Capture HTTP titles and status from Shodan if present
                 shodan_http_info = {}
                 for entry in data.get("data", []):
@@ -379,19 +400,29 @@ def run_domain_shodan_checks(
                 ip_obj = {
                     "ip": ip, "ports": ports,
                     "products": sorted({entry.get("product") for entry in data.get("data", []) if entry.get("product")})[:10],
-                    "vulns": vulns, "org": data.get("org", ""), "isp": data.get("isp", ""),
+                    "vulns": sorted(list(vuln_details.keys())),
+                    "vuln_details": vuln_details,
+                    "org": data.get("org", ""), "isp": data.get("isp", ""),
                     "asn": data.get("asn", ""), "country": data.get("country_name", ""),
+                    "city": data.get("city", "n/a"),
+                    "domains": data.get("domains", []),
+                    "hostnames": data.get("hostnames", []),
                     "os": data.get("os", ""),
                     "network_hint": f"{ip.rsplit('.', 1)[0]}.0/24" if ":" not in ip else f"{ip.rsplit(':', 1)[0]}:/64",
-                    "hostnames": data.get("hostnames", [])[:10],
                     "shodan_http": shodan_http_info,
                 }
                 ip_assets.append(ip_obj)
                 ip_summaries[ip] = ip_obj
+                # Add all hostnames from Shodan to our tracking
                 for h in data.get("hostnames", []):
                     h_norm = normalize_domain(h)
                     if h_norm.endswith(target_domain):
                         hostname_sources[h_norm].add("shodan_host")
+                # Also add domains if relevant
+                for d in data.get("domains", []):
+                    d_norm = normalize_domain(d)
+                    if d_norm.endswith(target_domain):
+                        hostname_sources[d_norm].add("shodan_host")
 
     fragments = []
     if os.path.isfile(provider_fragments):
@@ -444,6 +475,7 @@ def run_domain_shodan_checks(
         score = 0
         factors = []
         host_vulns = set()
+        host_vuln_details = {}
         host_ports = set()
         for ip in current_ips:
             if ip in ip_summaries:
@@ -456,6 +488,7 @@ def run_domain_shodan_checks(
                     score += 25
                     factors.append(f"Vulnerabilities found on {ip}")
                     host_vulns.update(summ["vulns"])
+                    host_vuln_details.update(summ.get("vuln_details", {}))
         if http_info["reachable"]:
             score += 15
             factors.append(f"Web service reachable ({http_info['status_code']})")
@@ -470,11 +503,27 @@ def run_domain_shodan_checks(
         if score >= 70: level = "critical"
         elif score >= 45: level = "high"
         elif score >= 25: level = "medium"
+        
+        # Aggregate Shodan metadata
+        all_cities = set()
+        all_domains = set()
+        all_hostnames_from_shodan = set()
+        for ip in current_ips:
+            if ip in ip_summaries:
+                s = ip_summaries[ip]
+                if s.get("city") and s.get("city") != "n/a": all_cities.add(s["city"])
+                all_domains.update(s.get("domains", []))
+                all_hostnames_from_shodan.update(s.get("hostnames", []))
+
         host_profiles.append({
             "hostname": host, "risk_score": score, "risk_level": level, "risk_factors": factors,
-            "vulns": sorted(list(host_vulns)), "ports": sorted(list(host_ports)),
+            "vulns": sorted(list(host_vulns)), "vuln_details": host_vuln_details,
+            "ports": sorted(list(host_ports)),
             "current_ips": current_ips, "provider_matches": matches,
-            "sources": sorted(list(hostname_sources[host])), "http": http_info
+            "sources": sorted(list(hostname_sources[host])), "http": http_info,
+            "city": ", ".join(sorted(list(all_cities))) or "n/a",
+            "shodan_domains": sorted(list(all_domains)),
+            "shodan_hostnames": sorted(list(all_hostnames_from_shodan))
         })
 
     host_profiles.sort(key=lambda x: x["risk_score"], reverse=True)

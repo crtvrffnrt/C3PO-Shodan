@@ -82,14 +82,32 @@ printf '%s\n' "your_shodan_api_key" > ~/.shodan/api_key
 chmod 600 ~/.shodan/api_key
 ```
 
-#### Cloudflare (Optional - for high-fidelity screenshots)
+#### Cloudflare (Optional but recommended - better screenshots)
 
 To enable the Cloudflare URL Scanner as the primary source for screenshots and security intelligence, add your credentials to the `.env` file:
 
+visit https://dash.cloudflare.com/profile/api-tokens create a free account and create a austom token with the following Permission:
+and then add the ACCOUNT_ID and TOKEN to env via:
+
 ```bash
-printf 'CF_ACCOUNT_ID=%s\n' "your_account_id" >> .env
-printf 'CF_API_TOKEN=%s\n' "your_api_token" >> .env
+All accounts - Radar:Read, URL Scanner:Edit, URL Scanner:Read
+``` 
+
+```bash
+CF_ACCOUNT_ID="your_account_id"
+CF_API_TOKEN="your_api_token"
+
+for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile" "$HOME/.zprofile"; do
+  [ -f "$rc" ] || continue
+
+  grep -q "^export CF_ACCOUNT_ID=" "$rc" || printf '\nexport CF_ACCOUNT_ID="%s"\n' "$CF_ACCOUNT_ID" >> "$rc"
+  grep -q "^export CF_API_TOKEN=" "$rc" || printf 'export CF_API_TOKEN="%s"\n' "$CF_API_TOKEN" >> "$rc"
+done
+
+export CF_ACCOUNT_ID="$CF_ACCOUNT_ID"
+export CF_API_TOKEN="$CF_API_TOKEN"
 ```
+
 
 If these credentials are missing, the pipeline will automatically fall back to local screenshot tools (Chromium, wkhtmltoimage, etc.).
 

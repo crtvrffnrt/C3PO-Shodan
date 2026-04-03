@@ -529,6 +529,8 @@ import json
 import os
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 raw_json, manifest_path, screenshot_dir, max_screenshots, account_id, api_token = sys.argv[1:]
@@ -549,13 +551,18 @@ entries = []
 
 os.makedirs(screenshot_dir, exist_ok=True)
 
-for target in targets:
+def scan_target(target):
     hostname = target.get("hostname")
     url = target.get("http", {}).get("url")
     clean_host = "".join(c if c.isalnum() else "_" for c in hostname)
     png_path = os.path.join(screenshot_dir, f"{clean_host}.png")
     json_path = os.path.join(screenshot_dir, f"cloudflare_{clean_host}.json")
     
+    # Simple delay to avoid burst rate limits
+    index = reachable.index(target)
+    if index > 0:
+        time.sleep(index * 5) # staggered start
+
     print(f"[*] Scanning {hostname} via Cloudflare...")
     
     cmd = [
@@ -570,60 +577,62 @@ for target in targets:
     env["CF_API_TOKEN"] = api_token
     
     try:
-        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=600)
         if result.returncode == 0 and os.path.exists(png_path):
             cf_data = {}
             if os.path.exists(json_path):
                 with open(json_path, "r") as f:
                     cf_data = json.load(f)
             
-            entries.append({
+            print(f" [+] Success: {hostname}")
+            return {
                 "hostname": hostname,
                 "url": url,
                 "status": "captured",
                 "tool": "cloudflare",
                 "path": png_path,
                 "cloudflare_info": cf_data
-            })
-            print(f" [+] Success: {hostname}")
+            }
         else:
             print(f" [!] Cloudflare failed for {hostname}: {result.stderr}")
-            entries.append({
+            return {
                 "hostname": hostname,
                 "url": url,
                 "status": "failed",
                 "tool": "cloudflare",
                 "reason": result.stderr or "Unknown error"
-            })
+            }
     except Exception as e:
         print(f" [!] Error scanning {hostname}: {str(e)}")
-        entries.append({
+        return {
             "hostname": hostname,
             "url": url,
             "status": "failed",
             "tool": "cloudflare",
             "reason": str(e)
-        })
+        }
+
+with ThreadPoolExecutor(max_workers=2) as executor:
+    results = list(executor.map(scan_target, targets))
+    entries.extend(results)
 
 # Fallback for failed or missing targets if needed
 captured_hosts = {e["hostname"] for e in entries if e["status"] == "captured"}
 remaining_targets = [t for t in targets if t["hostname"] not in captured_hosts]
 
 if remaining_targets:
-    print(f"[*] Attempting local fallback for {len(remaining_targets)} targets...")
-    # We could call capture-screenshots.py here for the remainder, but for simplicity 
-    # and to keep it clean, we'll just mark them as failed or use the existing logic after this block if we wanted.
+    print(f"[*] Cloudflare scanner missed {len(remaining_targets)} targets.")
 
 manifest = {
     "generated_at": datetime.now(timezone.utc).isoformat(),
-    "tool": "cloudflare-with-fallback",
+    "tool": "cloudflare-parallel",
     "entries": entries
 }
 
 with open(manifest_path, "w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2)
 PY
-        record_phase_result "phase4" "ok" "Cloudflare scanner completed"
+        record_phase_result "phase4" "ok" "Cloudflare parallel scanner completed"
     else:
         # Fallback to local capture
         screenshot_cmd=(
