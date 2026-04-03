@@ -11,6 +11,15 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+DEFAULT_GEMINI_MODEL="gemini-3-flash-preview"
+GEMINI_MODEL_OPTIONS=(
+  "gemini-3-flash-preview"
+  "gemini-2.5-flash"
+  "gemini-3.1-pro-preview"
+  "gemini-3.1-flash-lite-preview"
+  "gemini-3.1-flash-live-preview"
+)
+
 # 1. Run installer/check script
 bash "$PROJECT_ROOT/install.sh"
 
@@ -84,6 +93,65 @@ error() {
 fatal() {
     error "$*"
     exit 1
+}
+
+is_supported_gemini_model() {
+    local candidate="${1:-}"
+    local model
+    for model in "${GEMINI_MODEL_OPTIONS[@]}"; do
+        if [ "$candidate" = "$model" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+select_gemini_model() {
+    local current="${C3PO_GEMINI_MODEL:-${GEMINI_MODEL:-}}"
+    local choice=""
+    local selected=""
+
+    if [ -n "$current" ]; then
+        if is_supported_gemini_model "$current"; then
+            export C3PO_GEMINI_MODEL="$current"
+            info "Gemini model preset from environment: $C3PO_GEMINI_MODEL"
+            return 0
+        fi
+        warn "Ignoring unsupported Gemini model from environment: $current"
+    fi
+
+    if [ ! -t 0 ]; then
+        export C3PO_GEMINI_MODEL="$DEFAULT_GEMINI_MODEL"
+        info "Non-interactive shell detected. Using default Gemini model: $C3PO_GEMINI_MODEL"
+        return 0
+    fi
+
+    echo
+    info "Choose Gemini model for this run:"
+    echo "  1) gemini-3-flash-preview (default)"
+    echo "  2) gemini-2.5-flash"
+    echo "  3) gemini-3.1-pro-preview"
+    echo "  4) gemini-3.1-flash-lite-preview"
+    echo "  5) gemini-3.1-flash-live-preview"
+
+    while true; do
+        printf 'Select model [1-5] (Enter for default): '
+        read -r choice
+        case "${choice:-1}" in
+            1) selected="gemini-3-flash-preview" ;;
+            2) selected="gemini-2.5-flash" ;;
+            3) selected="gemini-3.1-pro-preview" ;;
+            4) selected="gemini-3.1-flash-lite-preview" ;;
+            5) selected="gemini-3.1-flash-live-preview" ;;
+            *)
+                warn "Invalid selection. Choose 1-5."
+                continue
+                ;;
+        esac
+        export C3PO_GEMINI_MODEL="$selected"
+        info "Using Gemini model: $C3PO_GEMINI_MODEL"
+        return 0
+    done
 }
 
 record_phase_result() {
@@ -361,6 +429,8 @@ if ! normalize_target_domain "$TARGET_INPUT"; then
     usage
     exit 1
 fi
+
+select_gemini_model
 
 echo -e "${GREEN}[*] Target domain: ${TARGET_DOMAIN}${NC}"
 echo -e "${GREEN}[*] Checking for related domains for report context...${NC}"

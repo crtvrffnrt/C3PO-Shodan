@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
-FLASH_MODEL = "gemini-3.1-pro-preview"
+DEFAULT_MODEL = "gemini-3-flash-preview"
 DEFAULT_TIMEOUT_SECONDS = 380
 
 
@@ -27,14 +27,27 @@ def _resolve_timeout(timeout_seconds: int | None) -> int:
         return DEFAULT_TIMEOUT_SECONDS
 
 
+def _resolve_model(model: str) -> str:
+    selected = str(model or "").strip()
+    if selected:
+        return selected
+    selected = (
+        os.environ.get("C3PO_GEMINI_MODEL")
+        or os.environ.get("GEMINI_MODEL")
+        or ""
+    ).strip()
+    return selected or DEFAULT_MODEL
+
+
 def run_gemini(prompt: str, model: str = "", debug: bool = False, timeout_seconds: int | None = None) -> GeminiResult:
     if not shutil.which("gemini"):
         return GeminiResult(text="", raw="gemini CLI not found in PATH", ok=False)
 
     timeout_seconds = _resolve_timeout(timeout_seconds)
+    selected_model = _resolve_model(model)
     cmd = ["gemini"]
-    if model:
-        cmd.extend(["-m", model])
+    if selected_model:
+        cmd.extend(["-m", selected_model])
     cmd.extend(["-p", prompt, "-o", "text"])
     try:
         result = subprocess.run(
