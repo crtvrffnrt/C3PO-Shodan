@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import re
+import shutil
 import ssl
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import urllib.request
 import urllib.parse
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
@@ -191,6 +193,37 @@ SCOPE_SUFFIXES = {
     "websites": ("azurewebsites.net",),
     "frontdoor": FRONTDOOR_SUFFIXES,
 }
+def resolve_httpx_binary() -> str:
+    candidates = []
+    env_path = os.environ.get("HTTPX_BIN", "").strip()
+    if env_path:
+        candidates.append(env_path)
+
+    home = Path.home()
+    candidates.extend(
+        [
+            str(home / ".pdtm" / "go" / "bin" / "httpx"),
+            str(home / "go" / "bin" / "httpx"),
+            shutil.which("httpx") or "",
+            "/usr/local/bin/httpx",
+            "/usr/bin/httpx",
+        ]
+    )
+
+    seen = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return ""
+
+
+HTTPX_STATE = {
+    "path": resolve_httpx_binary(),
+    "disabled_reason": "",
+}
 
 
 def extract_hostname(raw: str) -> str:
@@ -265,6 +298,111 @@ def probe_http_simple(hostname: str) -> dict:
         except Exception:
             continue
     return {"probed": True, "reachable": False, "scheme": "", "url": "", "status_code": 0, "title": ""}
+
+
+def choose_httpx_target(hostname: str, http_info: dict, ports: list[int] | set[int] | tuple[int, ...]) -> str:
+    url = str(http_info.get("url") or "").strip()
+    if url:
+        return url
+
+    try:
+        port_set = {int(port) for port in ports}
+    except Exception:
+        port_set = set()
+
+    if 443 in port_set or 8443 in port_set:
+        return f"https://{hostname}"
+    if 80 in port_set or 8080 in port_set:
+        return f"http://{hostname}"
+    return ""
+
+
+def probe_httpx_stack(target: str, debug: bool, timeout: int = 15) -> dict:
+    result = {
+        "checked": False,
+        "status": "skipped",
+        "source": "httpx",
+        "target": target,
+        "reason": "",
+        "result": {},
+    }
+
+    if not target:
+        result["reason"] = "No web endpoint available for httpx enrichment."
+        return result
+
+    httpx_path = HTTPX_STATE.get("path")
+    if not httpx_path:
+        result["reason"] = "httpx is not installed."
+        return result
+
+    if HTTPX_STATE.get("disabled_reason"):
+        result["reason"] = HTTPX_STATE["disabled_reason"]
+        return result
+
+    cmd = [
+        httpx_path,
+        "-td",
+        "-json",
+        "-title",
+        "-status-code",
+        "-web-server",
+        "-ip",
+        "-cdn",
+        "-asn",
+        "-timeout",
+        str(timeout),
+        "-retries",
+        "1",
+        "-silent",
+    ]
+    log_dbg(f"Running httpx enrichment for {target}", debug)
+    try:
+        completed = subprocess.run(
+            cmd,
+            input=f"{target}\n",
+            capture_output=True,
+            text=True,
+            timeout=timeout + 10,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        result["status"] = "error"
+        result["reason"] = f"httpx timed out after {timeout + 10}s."
+        return result
+    except Exception as exc:
+        HTTPX_STATE["disabled_reason"] = f"httpx execution failed: {exc}"
+        result["reason"] = HTTPX_STATE["disabled_reason"]
+        return result
+
+    stdout = (completed.stdout or "").strip()
+    stderr = (completed.stderr or "").strip()
+    if completed.returncode != 0:
+        HTTPX_STATE["disabled_reason"] = stderr or f"httpx exited with status {completed.returncode}."
+        result["reason"] = HTTPX_STATE["disabled_reason"]
+        return result
+
+    payload = {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+            break
+        except json.JSONDecodeError:
+            continue
+
+    if not payload:
+        result["status"] = "error"
+        result["reason"] = stderr or "httpx returned no JSON result."
+        return result
+
+    result["checked"] = True
+    result["status"] = "ok"
+    result["reason"] = ""
+    result["result"] = payload
+    return result
 
 
 def fetch_subdomains_subfinder(domain: str, debug: bool = False) -> list[str]:
@@ -515,12 +653,16 @@ def run_domain_shodan_checks(
                 all_domains.update(s.get("domains", []))
                 all_hostnames_from_shodan.update(s.get("hostnames", []))
 
+        httpx_target = choose_httpx_target(host, http_info, host_ports)
+        web_intel = probe_httpx_stack(httpx_target, debug=debug, timeout=15)
+
         host_profiles.append({
             "hostname": host, "risk_score": score, "risk_level": level, "risk_factors": factors,
             "vulns": sorted(list(host_vulns)), "vuln_details": host_vuln_details,
             "ports": sorted(list(host_ports)),
             "current_ips": current_ips, "provider_matches": matches,
             "sources": sorted(list(hostname_sources[host])), "http": http_info,
+            "web_intel": web_intel,
             "city": ", ".join(sorted(list(all_cities))) or "n/a",
             "shodan_domains": sorted(list(all_domains)),
             "shodan_hostnames": sorted(list(all_hostnames_from_shodan))
