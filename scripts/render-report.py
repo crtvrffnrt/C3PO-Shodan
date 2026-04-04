@@ -165,7 +165,106 @@ def vulnerability_summary_rows(hosts: list[dict]) -> str:
     return rows or '<tr><td colspan="5" class="muted">No infrastructure vulnerabilities identified.</td></tr>'
 
 
-def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
+def html_id(value: str) -> str:
+    cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in str(value))
+    while "--" in cleaned:
+        cleaned = cleaned.replace("--", "-")
+    cleaned = cleaned.strip("-")
+    return cleaned or "item"
+
+
+def render_intel_fact(label: str, value: str, mono: bool = False, full: bool = False) -> str:
+    classes = "intel-fact full" if full else "intel-fact"
+    strong_class = ' class="mono"' if mono else ""
+    safe_value = escape(str(value or "n/a"))
+    return (
+        f'<div class="{classes}">'
+        f'<span class="meta-label">{escape(label)}</span>'
+        f'<strong{strong_class}>{safe_value}</strong>'
+        "</div>"
+    )
+
+
+def render_web_intel_modal(host: dict, modal_id: str) -> str:
+    web_intel = host.get("web_intel") or {}
+    intel_status = web_intel.get("status", "skipped")
+    intel_reason = web_intel.get("reason", "")
+    intel_target = web_intel.get("target") or host.get("http", {}).get("url") or host.get("hostname", "")
+    intel_result = web_intel.get("result") or {}
+
+    if intel_status == "ok" and intel_result:
+        asn_info = intel_result.get("asn") or {}
+        tech_stack = "".join(
+            f'<span class="pill">{escape(str(tech))}</span>'
+            for tech in intel_result.get("tech", [])[:20]
+            if tech
+        ) or '<span class="muted small">No technologies fingerprinted.</span>'
+        dns_facts = "".join(
+            [
+                render_intel_fact("A Records", join_list(intel_result.get("a", [])), mono=True, full=True),
+                render_intel_fact("AAAA Records", join_list(intel_result.get("aaaa", [])), mono=True, full=True),
+                render_intel_fact("Resolvers", join_list(intel_result.get("resolvers", [])), mono=True, full=True),
+                render_intel_fact("ASN Range", join_list(asn_info.get("as_range", [])), mono=True, full=True),
+            ]
+        )
+        body_html = f"""
+          <div class="intel-fact-grid">
+            {render_intel_fact("Title", intel_result.get("title", "n/a"), full=True)}
+            {render_intel_fact("HTTP Status", str(intel_result.get("status_code", "n/a")), mono=True)}
+            {render_intel_fact("Web Server", intel_result.get("webserver", "n/a"), mono=True)}
+            {render_intel_fact("CDN", intel_result.get("cdn_name", "n/a"))}
+            {render_intel_fact("CDN Type", intel_result.get("cdn_type", "n/a"))}
+            {render_intel_fact("Resolved Host IP", intel_result.get("host_ip", "n/a"), mono=True)}
+            {render_intel_fact("Primary Host", intel_result.get("host", "n/a"), mono=True)}
+            {render_intel_fact("Scheme / Port", f"{intel_result.get('scheme', 'n/a')} / {intel_result.get('port', 'n/a')}", mono=True)}
+            {render_intel_fact("Content Type", intel_result.get("content_type", "n/a"), mono=True)}
+            {render_intel_fact("Response Time", intel_result.get("time", "n/a"), mono=True)}
+            {render_intel_fact("Words / Lines", f"{intel_result.get('words', 'n/a')} / {intel_result.get('lines', 'n/a')}", mono=True)}
+            {render_intel_fact("Content Length", str(intel_result.get("content_length", "n/a")), mono=True)}
+            {render_intel_fact("ASN", asn_info.get("as_number", "n/a"), mono=True)}
+            {render_intel_fact("ASN Name", asn_info.get("as_name", "n/a"))}
+            {render_intel_fact("ASN Country", asn_info.get("as_country", "n/a"), mono=True)}
+            {render_intel_fact("Input Target", intel_result.get("input", intel_target), mono=True, full=True)}
+          </div>
+          <div class="intel-section">
+            <span class="section-label">Detected Tech Stack</span>
+            <div class="intel-pills">{tech_stack}</div>
+          </div>
+          <div class="intel-section">
+            <span class="section-label">DNS / Network Evidence</span>
+            <div class="intel-fact-grid">
+              {dns_facts}
+            </div>
+          </div>
+        """
+    else:
+        reason_text = intel_reason or "Website enrichment did not return structured data for this host."
+        body_html = f"""
+          <div class="callout compact-callout">
+            <h3>Website Intel Unavailable</h3>
+            <p class="small muted">{escape(reason_text)}</p>
+          </div>
+        """
+
+    return f"""
+      <div class="intel-modal" id="{escape(modal_id)}" aria-hidden="true">
+        <div class="intel-modal-backdrop" data-modal-close></div>
+        <div class="intel-panel" role="dialog" aria-modal="true" aria-labelledby="{escape(modal_id)}-title">
+          <div class="intel-panel-head">
+            <div>
+              <span class="eyebrow">Website Intel</span>
+              <h3 id="{escape(modal_id)}-title">{escape(host.get("hostname", ""))}</h3>
+              <div class="host-subline mono">{escape(intel_target or "n/a")}</div>
+            </div>
+            <button type="button" class="intel-close" data-modal-close aria-label="Close website intelligence">x</button>
+          </div>
+          {body_html}
+        </div>
+      </div>
+    """
+
+
+def render_host_card(host: dict, screenshot_entry: Optional[dict], card_index: int) -> str:
     screenshot_html = ""
     cf_intel_html = ""
 
@@ -217,6 +316,7 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
     url = host.get("http", {}).get("url", "n/a")
     source_list = join_list(host.get("sources", []), empty="unspecified")
     risk_class = severity_class(host.get("risk_level", "low"))
+    modal_id = f"web-intel-{card_index}-{html_id(host.get('hostname', 'host'))}"
 
     return f"""
       <article class="host-card">
@@ -226,8 +326,11 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
             <h3>{escape(host.get("hostname", ""))}</h3>
             <div class="host-subline mono">{escape(source_list)}</div>
           </div>
-          <div class="risk-badge badge-{risk_class}">
-            {escape(risk_label(host.get('risk_score', 0), host.get('risk_level', 'low')))}
+          <div class="host-actions">
+            <button type="button" class="intel-trigger" data-modal-target="{escape(modal_id)}" aria-expanded="false" aria-label="Open website intelligence for {escape(host.get('hostname', ''))}">i</button>
+            <div class="risk-badge badge-{risk_class}">
+              {escape(risk_label(host.get('risk_score', 0), host.get('risk_level', 'low')))}
+            </div>
           </div>
         </div>
 
@@ -257,6 +360,7 @@ def render_host_card(host: dict, screenshot_entry: Optional[dict]) -> str:
           <span>Sources: {escape(source_list)}</span>
           <span>Recorded IPs: {escape(join_list(ips))}</span>
         </div>
+        {render_web_intel_modal(host, modal_id)}
       </article>
     """
 
@@ -415,8 +519,14 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
         for item in ip_assets[:80]
     )
 
-    host_cards = "".join(render_host_card(host, screenshots.get(host.get("hostname", ""))) for host in top_hosts)
-    supporting_cards = "".join(render_host_card(host, screenshots.get(host.get("hostname", ""))) for host in supporting_hosts)
+    host_cards = "".join(
+        render_host_card(host, screenshots.get(host.get("hostname", "")), card_index)
+        for card_index, host in enumerate(top_hosts, start=1)
+    )
+    supporting_cards = "".join(
+        render_host_card(host, screenshots.get(host.get("hostname", "")), card_index)
+        for card_index, host in enumerate(supporting_hosts, start=len(top_hosts) + 1)
+    )
 
     overall_state = "CRITICAL" if critical_count else "HIGH" if high_count else "MEDIUM" if medium_count else "BASELINE"
     overall_badge_class = "critical" if critical_count else "high" if high_count else "medium" if medium_count else "low"
@@ -651,8 +761,25 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     }}
     .host-card:hover {{ border-color: var(--line-strong); box-shadow: 0 12px 24px rgba(16,18,20,0.04); }}
     .host-head {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }}
+    .host-actions {{ display: flex; align-items: center; gap: 10px; }}
     .host-title-group h3 {{ margin: 0; font-size: 1.15rem; letter-spacing: -0.01em; }}
     .host-subline {{ margin-top: 6px; color: var(--text-muted); font-size: 0.68rem; word-break: break-all; }}
+    .intel-trigger {{
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f7f9fb;
+      color: var(--text-soft);
+      font: 700 0.82rem/1 "IBM Plex Mono", monospace;
+      cursor: pointer;
+      transition: all 140ms ease;
+    }}
+    .intel-trigger:hover {{
+      border-color: var(--line-strong);
+      background: #eef2f6;
+      transform: translateY(-1px);
+    }}
     .risk-badge {{
       padding: 6px 10px;
       border-radius: 8px;
@@ -685,6 +812,79 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       white-space: pre-wrap;
       word-break: break-word;
     }}
+    body.modal-open {{ overflow: hidden; }}
+    .intel-modal {{
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 1200;
+    }}
+    .intel-modal.is-open {{ display: flex; }}
+    .intel-modal-backdrop {{
+      position: absolute;
+      inset: 0;
+      background: rgba(16, 18, 20, 0.48);
+      backdrop-filter: blur(4px);
+    }}
+    .intel-panel {{
+      position: relative;
+      width: min(920px, 100%);
+      max-height: min(82vh, 920px);
+      overflow: auto;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: 0 24px 70px rgba(16, 18, 20, 0.18);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }}
+    .intel-panel-head {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }}
+    .intel-close {{
+      min-width: 36px;
+      height: 36px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f7f9fb;
+      color: var(--text-soft);
+      font: 700 0.78rem/1 "IBM Plex Mono", monospace;
+      cursor: pointer;
+    }}
+    .intel-fact-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }}
+    .intel-fact {{
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfcfd;
+    }}
+    .intel-fact.full {{ grid-column: 1 / -1; }}
+    .intel-fact strong {{
+      display: block;
+      font-size: 0.88rem;
+      color: var(--text-soft);
+      word-break: break-word;
+    }}
+    .intel-section {{
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }}
+    .intel-pills {{ display: flex; flex-wrap: wrap; gap: 8px; }}
     .asset-footer {{ display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--text-muted); font-size: 0.62rem; }}
     .mono {{ font-family: "IBM Plex Mono", monospace; }}
     .small {{ font-size: 0.8rem; }}
@@ -696,8 +896,11 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
     @media (max-width: 760px) {{
       .paper-inner {{ padding: 28px 18px 34px; }}
       .viewer-shell {{ width: min(100% - 16px, 1460px); padding-top: 16px; }}
-      .grid-two, .metric-grid, .host-metrics, .evidence-strip {{ grid-template-columns: 1fr; }}
+      .grid-two, .metric-grid, .host-metrics, .evidence-strip, .intel-fact-grid {{ grid-template-columns: 1fr; }}
       .host-head, .asset-footer {{ flex-direction: column; }}
+      .intel-modal {{ padding: 12px; }}
+      .intel-panel {{ padding: 18px; }}
+      .intel-panel-head {{ flex-direction: column; }}
     }}
   </style>
 </head>
@@ -881,6 +1084,55 @@ def html_report(payload: dict, manifest: dict, nuclei_results: list[dict]) -> st
       </article>
     </main>
   </div>
+  <script>
+    (() => {{
+      const body = document.body;
+      let activeModal = null;
+      let activeTrigger = null;
+
+      const closeModal = () => {{
+        if (!activeModal) return;
+        activeModal.classList.remove("is-open");
+        activeModal.setAttribute("aria-hidden", "true");
+        body.classList.remove("modal-open");
+        if (activeTrigger) {{
+          activeTrigger.setAttribute("aria-expanded", "false");
+          activeTrigger.focus();
+        }}
+        activeModal = null;
+        activeTrigger = null;
+      }};
+
+      document.querySelectorAll("[data-modal-target]").forEach((trigger) => {{
+        trigger.addEventListener("click", () => {{
+          const modal = document.getElementById(trigger.dataset.modalTarget);
+          if (!modal) return;
+          if (activeModal && activeModal !== modal) {{
+            closeModal();
+          }}
+          activeModal = modal;
+          activeTrigger = trigger;
+          modal.classList.add("is-open");
+          modal.setAttribute("aria-hidden", "false");
+          trigger.setAttribute("aria-expanded", "true");
+          body.classList.add("modal-open");
+        }});
+      }});
+
+      document.querySelectorAll("[data-modal-close]").forEach((node) => {{
+        node.addEventListener("click", (event) => {{
+          event.preventDefault();
+          closeModal();
+        }});
+      }});
+
+      document.addEventListener("keydown", (event) => {{
+        if (event.key === "Escape") {{
+          closeModal();
+        }}
+      }});
+    }})();
+  </script>
 </body>
 </html>
 """

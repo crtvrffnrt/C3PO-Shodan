@@ -11,6 +11,33 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}[*] Starting C3PO-shodan environment check...${NC}"
 
+resolve_httpx_binary() {
+    local candidates=()
+    if [ -n "${HTTPX_BIN:-}" ]; then
+        candidates+=("$HTTPX_BIN")
+    fi
+    candidates+=(
+        "$HOME/.pdtm/go/bin/httpx"
+        "$HOME/go/bin/httpx"
+    )
+    if command -v httpx >/dev/null 2>&1; then
+        candidates+=("$(command -v httpx)")
+    fi
+    candidates+=(
+        "/usr/local/bin/httpx"
+        "/usr/bin/httpx"
+    )
+
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # 1. Check for Python 3
 if ! command -v python3 >/dev/null 2>&1; then
     echo -e "${RED}[!] Python 3 is not installed. Please install it first.${NC}"
@@ -33,7 +60,16 @@ if ! command -v nuclei >/dev/null 2>&1; then
     echo -e "${RED}[!] nuclei is missing. Please install it: 'go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest'${NC}"
 fi
 
-# 4. Check for Shodan API Key
+# 4. Check for httpx
+if ! HTTPX_PATH="$(resolve_httpx_binary)"; then
+    echo -e "${YELLOW}[*] httpx not found. Attempting to install...${NC}"
+    echo -e "${RED}[!] httpx is missing. Please install it: 'go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest'${NC}"
+    echo -e "${YELLOW}[i] Website tech-stack enrichment will be skipped until httpx is available.${NC}"
+else
+    echo -e "${GREEN}[+] httpx found at ${HTTPX_PATH}${NC}"
+fi
+
+# 5. Check for Shodan API Key
 SHODAN_KEY_FILE="$HOME/.shodan/api_key"
 if [ -z "${SHODANAPI:-}" ] && [ ! -f "$SHODAN_KEY_FILE" ]; then
     echo -e "${YELLOW}[?] Shodan API key not found.${NC}"
@@ -49,7 +85,7 @@ if [ -z "${SHODANAPI:-}" ] && [ ! -f "$SHODAN_KEY_FILE" ]; then
     fi
 fi
 
-# 5. Check for Cloudflare API Credentials (Optional)
+# 6. Check for Cloudflare API Credentials (Optional)
 echo -e "${GREEN}[*] Checking for Cloudflare API credentials...${NC}"
 CF_ENV_FILE="$PROJECT_ROOT/.env"
 if [ -z "${CF_ACCOUNT_ID:-}" ] || [ -z "${CF_API_TOKEN:-}" ]; then
@@ -72,7 +108,7 @@ else
     echo -e "${GREEN}[+] Cloudflare credentials found. Cloudflare URL Scanner will be used as the primary screenshot source.${NC}"
 fi
 
-# 6. Check for Gemini CLI authentication
+# 7. Check for Gemini CLI authentication
 echo -e "${GREEN}[*] Checking Gemini CLI authentication...${NC}"
 if ! gemini -p "ping" -o text >/dev/null 2>&1; then
     echo -e "${RED}[!] Gemini CLI is not authenticated or not installed correctly.${NC}"
