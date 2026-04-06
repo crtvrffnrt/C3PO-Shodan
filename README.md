@@ -1,6 +1,6 @@
 <div align="center">
 
-# C3PO-shodan EASM Agentic Domain Check
+# C3PO-shodan llm-EASM 
 
 ---
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -8,7 +8,15 @@
 [![Shodan](https://img.shields.io/badge/API-Shodan-red.svg)](https://www.shodan.io/)
 [![Nuclei](https://img.shields.io/badge/Scanner-Nuclei-teal.svg)](https://github.com/projectdiscovery/nuclei)
 [![Gemini CLI](https://img.shields.io/badge/CLI-Gemini-5b5bd6.svg)](https://github.com/google-gemini/gemini-cli)
-# Agentic super external attack surface scanner
+## Example Report
+The generated reports provide a comprehensive, interactive view of the discovered attack surface. 
+
+</div>
+
+<div align="center">
+  <img src="example.png" alt="Example Report" width="1000">
+</div>
+# Agentic external attack surface scanner
 **A local Shodan and Nuclei attack-surface workflow intended to be driven from Gemini CLI.**
 </div>
 
@@ -187,12 +195,4 @@ Primary outputs:
 - The pipeline no longer creates a separate CISO summary text artifact.
 - If `nuclei` is missing, the rest of the Shodan collection and report pipeline can still complete, but vulnerability enrichment will be absent.
 
-## Example Report
 
-The generated reports provide a comprehensive, interactive view of the discovered attack surface. 
-
-</div>
-
-<div align="center">
-  <img src="example.png" alt="Example Report" width="1000">
-</div>
