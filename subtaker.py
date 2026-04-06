@@ -16,6 +16,38 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import subprocess
+
+# Resolve GOPATH (prefer go env, fallback to ~/go)
+try:
+    gopath = subprocess.check_output(
+        ["go", "env", "GOPATH"], text=True
+    ).strip()
+except Exception:
+    gopath = os.path.expanduser("~/go")
+
+os.environ["GOPATH"] = gopath
+
+# GOBIN = GOPATH/bin
+gobin = os.path.join(gopath, "bin")
+os.environ["GOBIN"] = gobin
+
+# Extend PATH safely
+current_path = os.environ.get("PATH", "")
+
+paths_to_add = [
+    gobin,
+    "/usr/local/go/bin",
+    os.path.expanduser("~/go/bin"),
+]
+
+for p in paths_to_add:
+    if p not in current_path:
+        current_path += f":{p}"
+
+os.environ["PATH"] = current_path
+
 
 
 def log_err(msg: str, debug: bool) -> None:
