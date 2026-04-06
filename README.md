@@ -19,8 +19,6 @@ The generated reports provide a comprehensive, interactive view of the discovere
 <div align="center">
   <img src="example.png" alt="Example Report" width="1000">
 </div>
-# Agentic external attack surface scanner
-**A local Shodan and Nuclei attack-surface workflow intended to be driven from Gemini CLI.**
 </div>
 
 ## Overview
