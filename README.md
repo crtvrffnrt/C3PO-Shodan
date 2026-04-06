@@ -12,11 +12,10 @@
 [![Nuclei](https://img.shields.io/badge/Scanner-Nuclei-teal.svg)](https://github.com/projectdiscovery/nuclei)
 [![Gemini CLI](https://img.shields.io/badge/CLI-Gemini-5b5bd6.svg)](https://github.com/google-gemini/gemini-cli)
 </div>
+</div>
+
 ## Example Report
 The generated reports provide a comprehensive, interactive view of the discovered attack surface. 
-
-
-
 <div align="center">
   <img src="example.png" alt="Example Report" width="1000">
 </div>
