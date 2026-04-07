@@ -113,12 +113,6 @@ chmod +x run.sh bin/run.sh scripts/*.sh install.sh
 ./run.sh example.com
 ```
 
-Gemini-assisted prompt from the repo root:
-
-```text
-Run ./run.sh against example.com, then help me inspect the HTML report and the Nuclei findings.
-```
-
 ## Pipeline
 
 | Phase | Action |
