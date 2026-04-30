@@ -1,7 +1,7 @@
 <div align="center">
   <img src="logo.jpg" alt="C3PO-shodan logo" width="360">
 
-  <h1>C3PO-shodan</h1>
+  <h1>C3PO-shodan-GEMINI</h1>
 
   <p><strong>A Shodan-driven EASM pipeline for mapping exposed infrastructure, enriching risky web targets, and rendering operator-friendly reports.</strong></p>
 
